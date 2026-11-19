@@ -25,4 +25,6 @@ builds/   exported APKs (not committed — see builds/README.md)
 ## Status
 
 v1 skeleton: holodeck room + holo-table + a grabbable 3-part test assembly with an
-explode slider. Voice link and the live CAD loop wire in next, per SPEC.md §3.
+explode slider, styled to the Stark design language in SPEC.md §2 (which also defines
+the Agents-of-SHIELD table model). Voice link and the live CAD loop wire in next,
+per SPEC.md §4.

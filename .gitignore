@@ -18,7 +18,13 @@ app/android/
 # Local tooling (not part of the project)
 push_api.py
 
+# Reference stills (copyrighted film/show frames — internal design reference only)
+research/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
 *.tmp
+
+# Vendored addons — reproducible via app/fetch_addons.sh (too large to commit)
+app/addons/
