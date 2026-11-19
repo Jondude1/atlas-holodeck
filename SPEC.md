@@ -226,6 +226,16 @@ emissive materials + sprite halos; glossy surface reflection → a soft glow
 decal under the active model (no planar reflections); dense film micro-text →
 fewer, larger labels.
 
+**Room + polish pass approximations (brief #8, vs `concept-target-04`):**
+- Floor reflection → no planar/SSR reflections; a dark metallic-rough floor with a procedural scuff/seam tile, a cyan glow-pool decal and a soft contact shadow under the table.
+- Volumetric glow / god-rays → environment fog (single density), additive halo sprites around wall accents and the cove, denser mote/dust particles; no volumetric fog.
+- Room detail → four canvas-drawn wall planes (panel seams, recessed bays, shelving/crate/drum silhouettes on the side walls), dark ceiling beams, one cyan cove strip and six recessed accent strips; flat textures, no real geometry depth, no external assets.
+- Brushed titanium → tiled procedural grain texture + metallic/roughness tune + bevel highlight strip; no anisotropic reflection or per-pixel env probes.
+- Tethered labels → one box leader line + Label3D per part, tracking explode; no per-part screen-space avoidance.
+- HUD frame → status strip, two counter-rotating arc frames, EXPLODE radial gauge and status card are flat quads/shaders in world space (not head-locked); the renders' decorative telemetry (SYNC, BAT, TEMP, POWER, LOAD, hex-panel graphs) is deliberately omitted: every value shown is real (system clock, LINK/BRAIN from the hub check, PARTS/DIMS/EXPLODE from the model).
+- Surface schematics → one low-alpha etched-drawing texture in the inset's end zones; far simpler than the renders' dense blueprint overlays.
+- Budget at rest: 60 draw calls (target <= 90), 3 lights.
+
 ## 3. Architecture
 
 ```

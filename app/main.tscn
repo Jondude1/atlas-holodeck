@@ -5,6 +5,8 @@
 [ext_resource type="Script" path="res://ui_panel.gd" id="4_ui"]
 [ext_resource type="Script" path="res://hand.gd" id="5_hand"]
 [ext_resource type="Script" path="res://table.gd" id="6_table"]
+[ext_resource type="Script" path="res://room.gd" id="7_room"]
+[ext_resource type="Script" path="res://hud.gd" id="8_hud"]
 
 [sub_resource type="Environment" id="Env_dark"]
 background_mode = 1
@@ -13,9 +15,6 @@ glow_enabled = true
 glow_intensity = 0.8
 glow_bloom = 0.1
 glow_hdr_threshold = 0.8
-
-[sub_resource type="BoxMesh" id="Mesh_room"]
-size = Vector3(12, 4, 12)
 
 [sub_resource type="BoxMesh" id="Mesh_base"]
 size = Vector3(0.24, 0.02, 0.16)
@@ -41,9 +40,11 @@ script = ExtResource("1_main")
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_dark")
 
-[node name="Room" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
-mesh = SubResource("Mesh_room")
+[node name="Room" type="Node3D" parent="."]
+script = ExtResource("7_room")
+
+[node name="Hud" type="Node3D" parent="."]
+script = ExtResource("8_hud")
 
 [node name="HoloTable" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.55)

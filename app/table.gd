@@ -18,7 +18,10 @@ const LEG_SPLAY_DEG := Vector2(8.0, 6.0)  # feet outward along X, along Z
 const READOUT_Z := 0.68    # floating readouts hover just past the player-facing edge
 const READOUT_Y := 1.12
 
-const EDGE_ENERGY := 2.0
+const EDGE_ENERGY := 3.4
+const CHANNEL_ENERGY := 4.0
+const BEVEL_ENERGY := 0.75
+const ETCH_ALPHA := 0.26
 const BEZEL_ENERGY := 1.4
 const LIGHT_ENERGY := 2.6
 const FILL_ENERGY := 0.7
@@ -29,6 +32,9 @@ var _ti_mat: StandardMaterial3D
 var _apron_mat: StandardMaterial3D
 var _strip_mat: StandardMaterial3D
 var _bezel_mat: StandardMaterial3D
+var _channel_mat: StandardMaterial3D
+var _bevel_mat: StandardMaterial3D
+var _etch_mat: StandardMaterial3D
 var _light: OmniLight3D
 var _fill: OmniLight3D
 var _rim: OmniLight3D
@@ -53,6 +59,11 @@ func set_fade(v: float) -> void:
 	_apron_mat.albedo_color = Tokens.TITANIUM_DARK * v
 	var s := Tokens.HOLO_LINE * (EDGE_ENERGY * v)
 	_strip_mat.albedo_color = Color(s.r, s.g, s.b)
+	var c := Tokens.HOLO_LINE * (CHANNEL_ENERGY * v)
+	_channel_mat.albedo_color = Color(c.r, c.g, c.b)
+	var bv := Tokens.TITANIUM.lerp(Tokens.HOLO_LINE, 0.55) * (BEVEL_ENERGY * v)
+	_bevel_mat.albedo_color = Color(bv.r, bv.g, bv.b)
+	_etch_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, ETCH_ALPHA * v)
 	var b := Tokens.HOLO_PRIMARY * (BEZEL_ENERGY * v)
 	_bezel_mat.albedo_color = Color(b.r, b.g, b.b)
 	inset_mat.set_shader_parameter("fade", v)
@@ -76,6 +87,8 @@ func _build_body() -> void:
 	_apron_mat = Fx.titanium(Tokens.TITANIUM_DARK)
 	_strip_mat = Fx.emissive(Tokens.HOLO_LINE, EDGE_ENERGY)
 	_bezel_mat = Fx.emissive(Tokens.HOLO_PRIMARY, BEZEL_ENERGY)
+	_channel_mat = Fx.emissive(Tokens.HOLO_LINE, CHANNEL_ENERGY)
+	_bevel_mat = Fx.emissive(Tokens.TITANIUM, BEVEL_ENERGY)
 	var body := Node3D.new()
 	body.name = "Body"
 	add_child(body)
@@ -100,8 +113,13 @@ func _build_body() -> void:
 
 	# continuous edge light strip along both long side edges (the signature detail)
 	for sz in [-1.0, 1.0]:
-		_box(body, "EdgeStrip%s" % ("F" if sz > 0 else "B"), Vector3(SLAB_BODY_HALF_X * 2.0, 0.012, 0.008),
-				Vector3(0, slab_y, sz * (SLAB_HALF_Z + 0.002)), _strip_mat)
+		_box(body, "EdgeStrip%s" % ("F" if sz > 0 else "B"), Vector3(SLAB_BODY_HALF_X * 2.0, 0.02, 0.01),
+				Vector3(0, slab_y, sz * (SLAB_HALF_Z + 0.003)), _strip_mat)
+
+	# machined bevel: a thin pale-metal highlight along the slab's top edge, front and back
+	for sz in [-1.0, 1.0]:
+		_box(body, "Bevel%s" % ("F" if sz > 0 else "B"), Vector3(SLAB_BODY_HALF_X * 2.0, 0.005, 0.012),
+				Vector3(0, SLAB_TOP + 0.0005, sz * (SLAB_HALF_Z - 0.006)), _bevel_mat)
 
 	# angled, splayed legs with a light channel down each outer face
 	var leg_top := SLAB_TOP - SLAB_T - 0.07
@@ -111,7 +129,7 @@ func _build_body() -> void:
 			var top := Vector3(sx * 0.95, leg_top, sz * 0.42)
 			var leg := _box(body, "Leg%s%s" % ["R" if sx > 0 else "L", "F" if sz > 0 else "B"], LEG,
 					top + b * Vector3(0, -LEG.y * 0.5, 0), _ti_mat, b)
-			_box(leg, "Channel", Vector3(0.015, LEG.y * 0.92, 0.004), Vector3(0, 0, sz * (LEG.z * 0.5 + 0.001)), _strip_mat)
+			_box(leg, "Channel", Vector3(0.024, LEG.y * 0.92, 0.006), Vector3(0, 0, sz * (LEG.z * 0.5 + 0.001)), _channel_mat)
 
 ## Titanium needs light to catch: the display glow from just above the inset (+ a dim player-side fill).
 func _build_light() -> void:
@@ -148,6 +166,20 @@ func _build_inset() -> void:
 	mi.material_override = inset_mat
 	mi.position.y = TOP_Y
 	add_child(mi)
+	# faint etched schematics away from centre: one low-alpha overlay quad, 1 mm above the grid
+	var etch := MeshInstance3D.new()
+	etch.name = "SurfaceEtch"
+	var eq := PlaneMesh.new()
+	eq.size = INSET
+	etch.mesh = eq
+	_etch_mat = StandardMaterial3D.new()
+	_etch_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_etch_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_etch_mat.albedo_texture = Blueprint.surface_etch(INSET)
+	_etch_mat.render_priority = 1
+	etch.material_override = _etch_mat
+	etch.position.y = TOP_Y + 0.001
+	add_child(etch)
 	# thin emissive bezel frame around the inset
 	var t := 0.012
 	var y := TOP_Y + 0.002

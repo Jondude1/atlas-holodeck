@@ -71,3 +71,62 @@ static func _circle(img: Image, c: Vector2, r: float, col: Color, w: int, dashes
 		var a := TAU * float(i) / steps
 		var p := c + Vector2(cos(a), sin(a)) * r
 		img.fill_rect(Rect2i(int(p.x) - w / 2, int(p.y) - w / 2, w, w), col)
+
+## Table-surface dressing (brief #8): faint etched drawings in the two end zones of the inset
+## (|x| > 0.55 m, clear of the ring and the model): plan outline with bolt holes + dimension line,
+## gear, section hatch, title block, centre-lines. Transparent background, HOLO_LINE strokes.
+const ETCH_PPM := 440
+
+static func surface_etch(inset: Vector2) -> ImageTexture:
+	var w := int(inset.x * ETCH_PPM)
+	var h := int(inset.y * ETCH_PPM)
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var line := Tokens.a(Tokens.HOLO_LINE, 1.0)
+	var dim := Tokens.a(Tokens.HOLO_LINE, 0.6)
+	var c := Vector2(w, h) * 0.5
+	var m := float(ETCH_PPM)
+	for side in [-1.0, 1.0]:
+		var o := c + Vector2(side * 0.82 * m, 0.0)  # zone centre
+		# plan view: stepped bracket outline with bolt holes
+		var plan := Rect2(o + Vector2(-0.22, -0.34) * m, Vector2(0.44, 0.2) * m)
+		_rect(img, plan, line, 2)
+		_rect(img, Rect2(plan.position + Vector2(0.0, 0.2) * m, Vector2(0.16, 0.12) * m), line, 2)
+		for k in 3:
+			_circle(img, plan.position + Vector2(0.07 + k * 0.15, 0.1) * m, 0.022 * m, line, 2, 0)
+		_line(img, plan.position + Vector2(-0.04, 0.1) * m, plan.end + Vector2(0.04, -0.1) * m, dim, 1)  # centre-line
+		var yd := plan.position.y - 0.04 * m  # dimension line above the plan
+		_line(img, Vector2(plan.position.x, yd), Vector2(plan.end.x, yd), dim, 1)
+		for e in [plan.position.x, plan.end.x]:
+			_line(img, Vector2(e, yd - 6), Vector2(e, yd + 6), dim, 1)
+		# gear / cam: ring + toothed outline + spokes
+		var g := o + Vector2(-side * 0.1, 0.18) * m
+		_circle(img, g, 0.1 * m, line, 2, 0)
+		_circle(img, g, 0.075 * m, dim, 1, 0)
+		_circle(img, g, 0.03 * m, line, 2, 0)
+		_circle(img, g, 0.115 * m, line, 2, 36)  # tooth ring
+		for k in 6:
+			var d := Vector2.from_angle(k * TAU / 6.0)
+			_line(img, g + d * 0.03 * m, g + d * 0.075 * m, dim, 1)
+		_line(img, g + Vector2(-0.14, 0) * m, g + Vector2(0.14, 0) * m, dim, 1)
+		_line(img, g + Vector2(0, -0.14) * m, g + Vector2(0, 0.14) * m, dim, 1)
+		# section hatch block
+		var hb := Rect2(o + Vector2(0.1 * side - 0.1, 0.3) * m, Vector2(0.2, 0.12) * m)
+		_rect(img, hb, line, 2)
+		var x := hb.position.x
+		while x < hb.end.x + hb.size.y:
+			var a := Vector2(x, hb.end.y)
+			var b := Vector2(x + hb.size.y, hb.position.y)
+			a.x = clampf(a.x, hb.position.x, hb.end.x)
+			if b.x > hb.end.x:
+				b = Vector2(hb.end.x, hb.position.y + (b.x - hb.end.x))
+			_line(img, a, b, dim, 1)
+			x += 0.024 * m
+		# title block, outer-bottom corner
+		var tb := Rect2(c + Vector2(side * 1.02 * m - (0.26 * m if side > 0 else 0.0), 0.36 * m), Vector2(0.26, 0.1) * m)
+		tb.position.x = clampf(tb.position.x, 6, w - tb.size.x - 6)
+		_rect(img, tb, dim, 1)
+		_line(img, tb.position + Vector2(0, tb.size.y * 0.5), tb.position + Vector2(tb.size.x, tb.size.y * 0.5), dim, 1)
+		_line(img, tb.position + Vector2(tb.size.x * 0.4, 0), tb.position + Vector2(tb.size.x * 0.4, tb.size.y), dim, 1)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)

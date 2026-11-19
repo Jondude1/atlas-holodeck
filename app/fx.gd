@@ -45,11 +45,48 @@ static func additive_unshaded(c: Color) -> StandardMaterial3D:
 	m.albedo_color = c
 	return m
 
+static var _brushed: ImageTexture
+
+## Brushed-metal grain: fine streaks along the face's U axis, mean ~0.85 so albedo_color keeps its tone.
+static func brushed_texture() -> ImageTexture:
+	if _brushed:
+		return _brushed
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_L8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1621
+	for y in n:
+		var v := 0.82 + rng.randf_range(-0.12, 0.1)
+		for x in n:
+			var w := clampf(v + rng.randf_range(-0.035, 0.035), 0.0, 1.0)
+			img.set_pixel(x, y, Color(w, w, w))
+	img.generate_mipmaps()
+	_brushed = ImageTexture.create_from_image(img)
+	return _brushed
+
 static func titanium(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c
-	m.metallic = 0.85
-	m.roughness = 0.38
+	m.albedo_texture = brushed_texture()
+	m.metallic = 0.9
+	m.roughness = 0.3
+	return m
+
+## Soft radial sprite (white centre -> transparent edge): glow pools, halos.
+static func radial_texture(size: int, power := 1.0) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var h := size * 0.5
+	for y in size:
+		for x in size:
+			var d := Vector2(x + 0.5 - h, y + 0.5 - h).length() / h
+			var a := pow(clampf(1.0 - d, 0.0, 1.0), power)
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	return ImageTexture.create_from_image(img)
+
+## Additive soft-glow material from a radial_texture; alpha scales it.
+static func glow_decal(c: Color, tex: Texture2D) -> StandardMaterial3D:
+	var m := additive_unshaded(c)
+	m.albedo_texture = tex
 	return m
 
 ## Light strips / bezel trim: unshaded, HDR albedo so the existing glow picks it up.

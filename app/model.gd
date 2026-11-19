@@ -10,7 +10,12 @@ const MATERIALIZE_TIME := 2.0
 const SCHEMATIC_LIFT := 0.002  # metres above the table surface (the model origin)
 const SCAN_PLANE_ALPHA := 0.45
 const SCAN_PLANE_MIN := 0.3    # metres: small parts still get a clear sweep
+const TETHER_RISE := 0.13      # metres: label sits this far above its part
+const TETHER_SIDE := 0.1       # ...and this far out to the side, away from the assembly centre
 const DIM_LABEL_GAP := 0.06    # metres past the footprint edge: just outside the dimension line
+
+signal explode_changed(t: float)
+var explode_value := 0.0
 
 var _parts: Array[MeshInstance3D] = []
 var _home := {}  # part -> home position
@@ -22,6 +27,9 @@ var _schematic_mat: StandardMaterial3D
 var _scan_plane: MeshInstance3D  # child of the root, NOT a part: not in _parts/_bounds/explode
 var _scan_mat: StandardMaterial3D
 var _dim_labels: Array[Label3D] = []
+var _tethers: Array[Dictionary] = []  # {part, label, line}: leader line + caps label per part
+var _tether_mat: StandardMaterial3D
+var _tether_alpha := 0.0
 
 func _ready() -> void:
 	super()
@@ -45,6 +53,7 @@ func _ready() -> void:
 	_build_schematic()
 	_build_dim_labels()
 	_build_scan_plane()
+	_build_tethers()
 	hide_all()
 
 func part_names() -> PackedStringArray:
@@ -83,8 +92,11 @@ static func _fmt_len(inches: float, long_form: bool) -> String:
 
 ## t in 0..1: 0 = assembled, 1 = fully exploded.
 func set_explode(t: float) -> void:
+	explode_value = t
+	explode_changed.emit(t)
 	for p in _parts:
 		p.position = _home[p] + _dir[p] * t * EXPLODE_DISTANCE
+	_update_tethers()
 
 func set_model_scale(s: float) -> void:
 	scale = Vector3.ONE * s
@@ -141,6 +153,68 @@ func _build_dim_labels() -> void:
 		add_child(l)
 		_dim_labels.append(l)
 
+## Thin leader line + small-caps label per part, following the part as it explodes.
+func _build_tethers() -> void:
+	_tether_mat = StandardMaterial3D.new()
+	_tether_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_tether_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_tether_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, 0.0)
+	for i in _parts.size():
+		var p := _parts[i]
+		var line := MeshInstance3D.new()
+		line.name = "Tether%d" % i
+		var box := BoxMesh.new()
+		box.size = Vector3(0.0018, 0.0018, 1.0)
+		line.mesh = box
+		line.material_override = _tether_mat
+		add_child(line)
+		var l := Label3D.new()
+		l.name = "PartLabel%d" % i
+		l.text = _part_caption(p.name, i)
+		l.font = load(Tokens.FONT_BOLD)
+		l.font_size = 40
+		l.pixel_size = 0.0008
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.shaded = false
+		l.no_depth_test = true
+		l.modulate = Tokens.a(Tokens.HOLO_LINE, 0.0)
+		l.outline_size = 0
+		add_child(l)
+		_tethers.append({"part": p, "label": l, "line": line})
+	_update_tethers()
+
+## "UprightArm" -> "UPRIGHT ARM · 02"
+static func _part_caption(part_name: String, index: int) -> String:
+	var words := PackedStringArray()
+	var cur := ""
+	for ch in part_name:
+		if ch == ch.to_upper() and ch != ch.to_lower() and cur != "":
+			words.append(cur)
+			cur = ""
+		cur += ch
+	words.append(cur)
+	return "%s · %02d" % [" ".join(words).to_upper(), index + 1]
+
+func _update_tethers() -> void:
+	for t in _tethers:
+		var p: MeshInstance3D = t["part"]
+		var a: Vector3 = Transform3D(p.basis, p.position) * p.mesh.get_aabb().get_center()
+		var side := 1.0 if a.x >= center_local.x else -1.0
+		var tip := a + Vector3(side * TETHER_SIDE, TETHER_RISE, 0.0)
+		var line: MeshInstance3D = t["line"]
+		var d := tip - a
+		var up := Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
+		line.transform = Transform3D(Basis.looking_at(d, up) * Basis.from_scale(Vector3(1, 1, d.length())), a.lerp(tip, 0.5))
+		var l: Label3D = t["label"]
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if side > 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		l.position = tip + Vector3(side * 0.008, 0.012, 0.0)
+
+func set_tether_alpha(a: float) -> void:
+	_tether_alpha = a
+	_tether_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, a * 0.8)
+	for t in _tethers:
+		t["label"].modulate = Tokens.a(Tokens.HOLO_LINE, a)
+
 func _build_scan_plane() -> void:
 	var quad := QuadMesh.new()
 	quad.size = Vector2(maxf(_bounds.size.x * 1.15, SCAN_PLANE_MIN), maxf(_bounds.size.z * 1.15, SCAN_PLANE_MIN))
@@ -171,6 +245,11 @@ func _set_state(shown: bool, scan: float, flash_v: float, wire: float) -> void:
 	_scan_plane.visible = false
 	for l in _dim_labels:
 		l.visible = shown
+	for t in _tethers:
+		t["label"].visible = shown
+		t["line"].visible = shown
+	if _tether_mat:
+		set_tether_alpha(0.0)
 	for m in _mats:
 		m.set_shader_parameter("scan", scan)
 		m.set_shader_parameter("flash", flash_v)

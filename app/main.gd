@@ -12,10 +12,10 @@ const RING_DISTANCE := 1.3
 @onready var _table: Node3D = $HoloTable
 @onready var _model: Node3D = $HoloTable/TestBracket
 @onready var _panel: Node3D = $UIPanel
-@onready var _room: MeshInstance3D = $Room
+@onready var _room: Room = $Room
+@onready var _hud: Hud = $Hud
 
 var _xr_ok := false
-var _room_mat: ShaderMaterial
 var _ring_mat: ShaderMaterial
 var _ring: MeshInstance3D
 
@@ -41,7 +41,7 @@ func _ready() -> void:
 ## Colours come from Tokens only; the scene file carries geometry, not colour.
 func _apply_tokens() -> void:
 	var env: Environment = $WorldEnvironment.environment
-	# Static procedural sky: never seen (the room box hides it), exists so metals reflect a
+	# Static procedural sky: never seen (the room hides it), exists so metals reflect a
 	# blue horizon band instead of a flat colour. Cheap: no probes, no post.
 	var sky_mat := ProceduralSkyMaterial.new()
 	sky_mat.sky_top_color = Tokens.ROOM_BG
@@ -53,13 +53,15 @@ func _apply_tokens() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.5
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	_room_mat = Fx.grid_material(Tokens.ROOM_BG, 0.5, 2.0)
-	_room_mat.set_shader_parameter("dist_fade", 1.0)
-	_room_mat.set_shader_parameter("strength", 0.4)
-	_room_mat.set_shader_parameter("line_px", 0.8)
-	_room.material_override = _room_mat
+	env.ambient_light_energy = 0.9
+	env.fog_enabled = true
+	env.fog_light_color = Tokens.HOLO_DEEP.lerp(Tokens.ROOM_BG, 0.4)
+	env.fog_light_energy = 0.8
+	env.fog_density = 0.035
+	env.fog_sky_affect = 0.0
+	_room.build(Vector2($HoloTable.position.x, $HoloTable.position.z))
+	_hud.build(_model, _table)
 	var laser := StandardMaterial3D.new()
 	laser.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	laser.albedo_color = Tokens.HOLO_LINE
@@ -76,7 +78,8 @@ func _set_ring(v: float, param: StringName) -> void:
 	_ring_mat.set_shader_parameter(param, v)
 
 func _set_fade(v: float) -> void:
-	_room_mat.set_shader_parameter("fade", v)
+	_room.set_fade(v)
+	_hud.set_fade(v)
 	_table.set_fade(v)
 	_table.scale = Vector3.ONE * lerpf(0.94, 1.0, v)
 
@@ -109,6 +112,7 @@ func _on_boot_complete() -> void:
 	print("boot complete")
 	_check_hub()
 	_table.start_motes()
+	_room.start_dust()
 	_panel.reveal()
 	_model.labels_beat.connect(_on_labels_beat, CONNECT_ONE_SHOT)
 	await _model.materialize()
@@ -118,6 +122,7 @@ func _on_boot_complete() -> void:
 
 func _on_labels_beat() -> void:
 	_tween(_table.set_readout_alpha, 0.0, 1.0, 0.2)
+	_tween(_model.set_tether_alpha, 0.0, 1.0, 0.3)
 
 ## Tries the LAN hub first, then the tailnet. Result only changes the LINK readout and
 ## Hub.base_url; failure is never an error screen.
@@ -126,8 +131,12 @@ func _check_hub() -> void:
 	for i in Hub.CANDIDATES.size():
 		if await _hub_ok(Hub.CANDIDATES[i]):
 			Hub.base_url = Hub.CANDIDATES[i]
+			Hub.link = labels[i]
+			Hub.brain = "HERMES"
 			_table.set_link("LINK — HUB OK · %s" % labels[i])
 			return
+	Hub.link = "LOCAL ONLY"
+	Hub.brain = "OFFLINE"
 	_table.set_link("LINK — LOCAL ONLY")
 
 func _hub_ok(base: String) -> bool:
