@@ -200,9 +200,20 @@ table surface → (2) a scan plane sweeps bottom-to-top, wireframe resolving as 
 passes → (3) translucent volume fills in, edges brighten to `holo_line` →
 (4) part labels fade in last.
 
-**Boot beats (≈2.5 s total):** black → ring + ticks draw in (~0.4 s) → progress
-arc fills clockwise with tick highlights (~1.4 s) → one pulse at 100% → room and
-table fade up (~0.6 s) → Atlas greeting by voice.
+**Boot beats:** black → ring + ticks draw in → progress arc fills clockwise
+with tick highlights → one pulse at 100% → room and table fade up → demo part
+materializes → Atlas greeting by voice.
+
+**Boot storyboard (committed, Jon 2026-11-19):** `design/boot-frame-01.webp`
+(ring ignition) → `design/boot-frame-02.webp` (systems check ~70%, gauge panels
+either side of the ring) → `design/boot-frame-03.webp` (room reveal / table
+power-on) → `design/boot-frame-04.webp` (demo part materializing over its
+schematic). **Target timings:** frame 01→02 ≈ 1 s, systems check completes
+≈ 2.5 s, room fade ≈ 1.5 s, materialize ≈ 2 s, then Atlas greets. (The current
+build's boot runs ≈2.7 s with a 1.2 s materialize — aligning the timings to the
+storyboard is a first-contact-chunk task.) The renders' text values are
+placeholders — ignore them; real UI values follow the imperial-decimal rule
+Jon set in the Holodeck chat.
 
 **Film effects → Quest 2 approximations (stated, not silent):** true volumetric
 glow column → additive transparent cone + rising particles; real bloom →
