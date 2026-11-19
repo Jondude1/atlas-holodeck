@@ -6,8 +6,11 @@ signal labels_beat  # materialize beat 4: labels may fade in
 signal materialized
 
 const EXPLODE_DISTANCE := 0.25
-const MATERIALIZE_TIME := 1.2
+const MATERIALIZE_TIME := 2.0
 const SCHEMATIC_LIFT := 0.002  # metres above the table surface (the model origin)
+const SCAN_PLANE_ALPHA := 0.45
+const SCAN_PLANE_MIN := 0.3    # metres: small parts still get a clear sweep
+const DIM_LABEL_GAP := 0.06    # metres past the footprint edge: just outside the dimension line
 
 var _parts: Array[MeshInstance3D] = []
 var _home := {}  # part -> home position
@@ -16,6 +19,9 @@ var _mats: Array[ShaderMaterial] = []
 var _bounds := AABB()  # model-local bounds of the assembled parts
 var _schematic: MeshInstance3D  # child of the root, NOT a part: never explodes
 var _schematic_mat: StandardMaterial3D
+var _scan_plane: MeshInstance3D  # child of the root, NOT a part: not in _parts/_bounds/explode
+var _scan_mat: StandardMaterial3D
+var _dim_labels: Array[Label3D] = []
 
 func _ready() -> void:
 	super()
@@ -37,6 +43,8 @@ func _ready() -> void:
 		_mats.append(mat)
 		p.material_override = mat
 	_build_schematic()
+	_build_dim_labels()
+	_build_scan_plane()
 	hide_all()
 
 func part_names() -> PackedStringArray:
@@ -45,10 +53,33 @@ func part_names() -> PackedStringArray:
 		names.append(p.name)
 	return names
 
-## Real size from the part AABBs, as "240 × 160 × 200 MM" (X × Z × Y: length, depth, height).
+## Real size from the part AABBs in decimal inches, as "9.45 × 6.3 × 7.87 IN" (X × Z × Y: length,
+## depth, height). A dimension >= 24 in reads as feet + inches (F' R.R"); the IN suffix only
+## appears when every dimension is plain inches. Metric never reaches the display.
 func dims_text() -> String:
 	var s := _bounds.size
-	return "%d × %d × %d MM" % [roundi(s.x * 1000.0), roundi(s.z * 1000.0), roundi(s.y * 1000.0)]
+	var inches := [s.x / 0.0254, s.z / 0.0254, s.y / 0.0254]
+	var long_form := inches.any(func(v): return v >= 24.0)
+	var parts := PackedStringArray()
+	for v in inches:
+		parts.append(_fmt_len(v, long_form))
+	return " × ".join(parts) + ("" if long_form else " IN")
+
+static func _fmt_dec(v: float, places: int) -> String:
+	var t := String.num(v, places)
+	if t.contains("."):
+		t = t.rstrip("0").rstrip(".")
+	return t
+
+static func _fmt_len(inches: float, long_form: bool) -> String:
+	if inches >= 24.0:
+		var ft := int(inches / 12.0)
+		var rem := inches - ft * 12.0
+		if roundf(rem * 100.0) / 100.0 >= 12.0:  # rounding carried into a full foot
+			ft += 1
+			rem = 0.0
+		return "%d' %s\"" % [ft, _fmt_dec(rem, 1)]
+	return _fmt_dec(inches, 2)
 
 ## t in 0..1: 0 = assembled, 1 = fully exploded.
 func set_explode(t: float) -> void:
@@ -84,6 +115,52 @@ func _build_schematic() -> void:
 	_schematic.position = Vector3(_bounds.get_center().x, SCHEMATIC_LIFT, _bounds.get_center().z)
 	add_child(_schematic)
 
+## Flat X / Z size labels just outside the blueprint's dimension lines.
+func _build_dim_labels() -> void:
+	var c := _bounds.get_center()
+	var s := _bounds.size
+	var specs := [
+		[s.x, Vector3(c.x, SCHEMATIC_LIFT, _bounds.end.z + DIM_LABEL_GAP), 0.0],
+		[s.z, Vector3(_bounds.end.x + DIM_LABEL_GAP, SCHEMATIC_LIFT, c.z), 90.0],
+	]
+	var inches := [s.x / 0.0254, s.z / 0.0254]
+	var long_form: bool = inches.any(func(v): return v >= 24.0) or s.y / 0.0254 >= 24.0
+	for i in 2:
+		var l := Label3D.new()
+		l.name = "DimLabel%d" % i
+		l.text = _fmt_len(inches[i], long_form) + ("" if long_form else " IN")
+		l.font = load(Tokens.FONT_BOLD)
+		l.font_size = 48
+		l.pixel_size = 0.0011
+		l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		l.shaded = false
+		l.double_sided = true
+		l.modulate = Tokens.HOLO_LINE
+		l.position = specs[i][1]
+		l.rotation_degrees = Vector3(-90.0, specs[i][2], 0.0)
+		add_child(l)
+		_dim_labels.append(l)
+
+func _build_scan_plane() -> void:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(maxf(_bounds.size.x * 1.15, SCAN_PLANE_MIN), maxf(_bounds.size.z * 1.15, SCAN_PLANE_MIN))
+	_scan_mat = Fx.additive_unshaded(Tokens.a(Tokens.HOLO_LINE, 0.0))
+	_scan_plane = MeshInstance3D.new()
+	_scan_plane.name = "ScanPlane"
+	_scan_plane.mesh = quad
+	_scan_plane.material_override = _scan_mat
+	_scan_plane.rotation_degrees.x = -90.0
+	_scan_plane.position = Vector3(_bounds.get_center().x, _bounds.position.y, _bounds.get_center().z)
+	_scan_plane.visible = false
+	add_child(_scan_plane)
+
+## t 0..1 sweeps the plane base -> top; alpha is the plane's own strength.
+func _set_scan_plane(t: float) -> void:
+	_scan_plane.position.y = lerpf(_bounds.position.y, _bounds.end.y, t)
+
+func _set_scan_plane_alpha(a: float) -> void:
+	_scan_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, a)
+
 func hide_all() -> void:
 	_set_state(false, 0.0, 0.0, 0.0)
 
@@ -91,6 +168,9 @@ func _set_state(shown: bool, scan: float, flash_v: float, wire: float) -> void:
 	for p in _parts:
 		p.visible = shown
 	_schematic.visible = shown
+	_scan_plane.visible = false
+	for l in _dim_labels:
+		l.visible = shown
 	for m in _mats:
 		m.set_shader_parameter("scan", scan)
 		m.set_shader_parameter("flash", flash_v)
@@ -102,8 +182,15 @@ func _set_param(v: float, param: StringName) -> void:
 
 func _set_schematic_alpha(a: float) -> void:
 	_schematic_mat.albedo_color = Color(1, 1, 1, a)
+	for l in _dim_labels:
+		l.modulate = Tokens.a(Tokens.HOLO_LINE, a)
 
-## SPEC §2.6 beats, ~1.2 s: (1) flat schematic + wireframe appear -> (2) scan plane sweeps
+func _scan_plane_begin() -> void:
+	_set_scan_plane(0.0)
+	_set_scan_plane_alpha(SCAN_PLANE_ALPHA)
+	_scan_plane.visible = true
+
+## SPEC §2.6 beats, ~2 s: (1) flat schematic + wireframe appear -> (2) scan plane sweeps
 ## bottom-to-top, resolving the wireframe -> (3) volume fills, edges settle from white-hot
 ## to holo_line -> (4) labels. Safe to call on any future spawned model.
 func materialize() -> void:
@@ -115,11 +202,16 @@ func materialize() -> void:
 		m.set_shader_parameter("y0", y_lo)
 		m.set_shader_parameter("y1", y_hi)
 	var tw := create_tween().set_parallel(true)
-	tw.tween_method(_set_schematic_alpha, 0.0, 1.0, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_method(_set_param.bind(&"wire"), 0.0, 1.0, 0.25)
-	tw.tween_method(_set_param.bind(&"scan"), 0.0, 1.15, 0.6).set_delay(0.25) \
+	tw.tween_method(_set_schematic_alpha, 0.0, 1.0, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_method(_set_param.bind(&"wire"), 0.0, 1.0, 0.35)
+	tw.tween_method(_set_param.bind(&"scan"), 0.0, 1.15, 1.1).set_delay(0.35) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tw.tween_method(_set_param.bind(&"flash"), 1.0, 0.0, 0.35).set_delay(0.7)
-	tw.tween_callback(labels_beat.emit).set_delay(1.0)
+	tw.tween_callback(_scan_plane_begin).set_delay(0.35)
+	tw.tween_method(_set_scan_plane, 0.0, 1.0, 1.1).set_delay(0.35) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_method(_set_scan_plane_alpha, SCAN_PLANE_ALPHA, 0.0, 0.25).set_delay(1.2)
+	tw.tween_callback(func() -> void: _scan_plane.visible = false).set_delay(1.45)
+	tw.tween_method(_set_param.bind(&"flash"), 1.0, 0.0, 0.5).set_delay(1.35)
+	tw.tween_callback(labels_beat.emit).set_delay(1.75)
 	tw.tween_callback(materialized.emit).set_delay(MATERIALIZE_TIME)
 	await materialized

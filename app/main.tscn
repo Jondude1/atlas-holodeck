@@ -46,7 +46,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
 mesh = SubResource("Mesh_room")
 
 [node name="HoloTable" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.55)
 script = ExtResource("6_table")
 
 [node name="TestBracket" type="Node3D" parent="HoloTable"]
@@ -66,10 +66,10 @@ transform = Transform3D(0.7071068, 0.7071068, 0, -0.7071068, 0.7071068, 0, 0, 0,
 mesh = SubResource("Mesh_gusset")
 
 [node name="FallbackCamera" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.62, 0.1)
 
 [node name="UIPanel" type="Node3D" parent="."]
-transform = Transform3D(0.8944272, 0, -0.4472136, 0, 1, 0, 0.4472136, 0, 0.8944272, 1.5, 1.35, -2.1)
+transform = Transform3D(0.8944272, 0, -0.4472136, 0, 1, 0, 0.4472136, 0, 0.8944272, 1.55, 1.35, -1.15)
 script = ExtResource("4_ui")
 model_path = NodePath("../HoloTable/TestBracket")
 

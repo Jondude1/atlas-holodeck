@@ -14,9 +14,15 @@ uniform float major_strength = 0.7; // ~2x minor
 uniform float line_px = 1.2;
 uniform float glow = 2.0;
 uniform float fade = 1.0;
+uniform float strength = 1.0;
+uniform float dist_fade = 0.0;   // 1 = attenuate with camera distance (room); 0 = off (table inset)
+uniform float near_dist = 2.5;   // full strength at or inside this distance (m)
+uniform float far_dist = 9.0;    // far_floor strength at or beyond this distance (m)
+uniform float far_floor = 0.15;
 
 varying vec3 lpos;
 varying vec3 lnrm;
+varying vec3 wpos;
 
 float grid_line(vec3 pos, float spacing) {
 	vec3 p = pos / spacing;
@@ -29,6 +35,7 @@ float grid_line(vec3 pos, float spacing) {
 void vertex() {
 	lpos = VERTEX;
 	lnrm = NORMAL;
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
@@ -36,5 +43,6 @@ void fragment() {
 	float major = grid_line(lpos, major_spacing);
 	vec3 e = max(minor_color * minor * minor_strength, major_color * major * major_strength);
 	ALBEDO = base_color * fade;
-	EMISSION = e * glow * fade;
+	float k = mix(1.0, mix(1.0, far_floor, smoothstep(near_dist, far_dist, distance(wpos, CAMERA_POSITION_WORLD))), dist_fade);
+	EMISSION = e * glow * fade * strength * k;
 }

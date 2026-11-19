@@ -26,7 +26,7 @@ present as a voice.
 1. **Talk:** Jon holds a controller button (push-to-talk) and speaks. Atlas answers out
    loud, with the same memory, personality, and guardrails as the phone app — it is a
    new face on the same brain, not a second assistant.
-2. **Create:** Jon says *"Atlas, make me a bracket, 80 mm wide, four bolt holes."*
+2. **Create:** Jon says *"Atlas, make me a bracket, 3.5 in wide, four bolt holes."*
    The request goes to Hermes, which (via its Claude Code lane) writes a build123d
    Python script. Athena's 3D worker runs it, validates the solid, and exports glTF.
    The finished model **materializes on the holo-table** with a scan/build-up effect,
@@ -37,6 +37,9 @@ present as a voice.
    labels) lies on the surface under the hologram and rotates with it. The **explode
    slider** on a floating panel separates the assembly into its named parts — then
    slides it back together.
+   The v1 demo piece is the build123d test bracket, materializing at table centre over its
+   flat schematic. (The trebuchet showcase is parked in `parked/trebuchet-app-20261119/`;
+   its finished CAD is in `cad/`.)
 4. **Keep / print:** The source `.py`, `.step`, and `.glb` are saved on Athena under
    the HA Slicer library. *"Send it to the printer"* is **confirmation-gated**: Atlas
    states what will print (part, material, estimated time) and waits for an explicit
@@ -71,7 +74,8 @@ decoration:** *"Make this look and feel and act like a Stark Tech app."*
   Jon by voice.
 - Atlas speaks confirmations for actions ("Bracket rendered. Four parts.").
 - Live workshop readouts around the table edge — connection, brain tier, part count,
-  dimensions in mm — updating like a workshop HUD.
+  dimensions in decimal inches (feet + inches at table scale) — metric is internal
+  only, never displayed — updating like a workshop HUD.
 
 ### Performance budget (Quest 2)
 - Glow via emissive materials + cheap fake-bloom sprites rather than a heavy
@@ -92,12 +96,12 @@ SHIELD defines how the table itself works**:
   industrial, a premium **dark titanium** finish with clean panel lines (bolts
   and seams subtle, not military-crate), a **continuous cyan light strip inset
   along the slab's side edge**, matching light channels down the angled legs,
-  and subtle illuminated edge trim. Build tokens: top ≈ **2.2 m × 1.2 m**,
+  and subtle illuminated edge trim. Build tokens: top **2.44 m × 1.22 m (8 ft × 4 ft, Jon 2026-11-19)**,
   height ≈ **0.95 m**, slab ≈ **10 cm** thick, tapered/angular silhouette
   (detail via materials, not geometry — the table stays a handful of boxes);
   the etched grid + rotating ring render on the inset display surface only.
   **Display proportion (Jon, 2026-11-19):** the display covers MOST of the top
-  — inset ≈ **1.95 m × 1.0 m** (~85–90% of the surface) with only a slim metal
+  — inset ≈ **2.2 m × 1.0 m** (~85–90% of the surface) with only a slim metal
   bezel/rim of ~10–12 cm around it, like the show table whose working surface
   is nearly all display. Holograms rise from the inset; the schematic layer
   lives on the inset; readouts are a mix of small physical bezel/edge displays
@@ -191,11 +195,11 @@ fails.
 ticks (every 30°, ~2× length), 2 inner concentric rings at 0.82 / 0.64 radius,
 one progress arc drawn brighter/thicker than the base ring.
 
-**Table grid token:** etched grid on the display inset (1.95 m × 1.0 m, set into
-the 2.2 m × 1.2 m metal top per §2) — minor lines every 10 cm, major lines every
-50 cm at ~2× brightness, plus a UI glyph strip along the player-facing edge.
+**Table grid token:** etched grid on the display inset (≈2.2 m × 1.0 m, set into
+the 2.44 m × 1.22 m (8 ft × 4 ft) metal top per §2) — minor lines every 6 in, major lines every
+1 ft at ~2× brightness, plus a UI glyph strip along the player-facing edge.
 
-**Materialize beats (≈1.2 s total):** (1) flat schematic/wireframe appears on the
+**Materialize beats (≈2 s total):** (1) flat schematic/wireframe appears on the
 table surface → (2) a scan plane sweeps bottom-to-top, wireframe resolving as it
 passes → (3) translucent volume fills in, edges brighten to `holo_line` →
 (4) part labels fade in last.
@@ -209,9 +213,10 @@ materializes → Atlas greeting by voice.
 either side of the ring) → `design/boot-frame-03.webp` (room reveal / table
 power-on) → `design/boot-frame-04.webp` (demo part materializing over its
 schematic). **Target timings:** frame 01→02 ≈ 1 s, systems check completes
-≈ 2.5 s, room fade ≈ 1.5 s, materialize ≈ 2 s, then Atlas greets. (The current
-build's boot runs ≈2.7 s with a 1.2 s materialize — aligning the timings to the
-storyboard is a first-contact-chunk task.) The renders' text values are
+≈ 2.5 s, room fade ≈ 1.5 s, materialize ≈ 2 s, then Atlas greets. (Done in the
+first-contact chunk: ring draw-in 0.6 s + arc fill 1.7 s + pulse 0.2 s = 2.5 s
+systems check, room/table fade 1.5 s, materialize 2.0 s; the greeting plays after
+materialize completes, then the confirm line — never overlapping.) The renders' text values are
 placeholders — ignore them; real UI values follow the imperial-decimal rule
 Jon set in the Holodeck chat.
 
@@ -227,8 +232,8 @@ fewer, larger labels.
  Quest 2 (Godot/OpenXR)                Home network (LAN / tailnet)
  ┌────────────────────┐   HTTPS/WS    ┌──────────────────────────────┐
  │ Holodeck room      │ ────────────► │ Atlas hub (Obelisk)          │
- │ PTT mic capture    │               │ http://100.65.202.81:8765    │
- │ TTS playback       │ ◄──────────── │ session, auth, routing       │
+ │ PTT mic capture    │               │ LAN 192.168.4.51:8765        │
+ │ TTS playback       │ ◄──────────── │ tailnet fb 100.65.202.81:8765│
  │ glTF loader        │               └──────────────┬───────────────┘
  │ grab/explode UI    │                              │ brain turns
  └─────────▲──────────┘               ┌──────────────▼───────────────┐
@@ -248,10 +253,21 @@ fewer, larger labels.
 | Piece | Where | Notes |
 |---|---|---|
 | Holodeck app | Quest 2 (this repo, `app/`) | Godot 4 + OpenXR; renders room, table, models; mic in, TTS out |
-| Atlas hub | Obelisk, `:8765` | Same hub the phone app uses; app authenticates the same way (hub-served provisioning, no secrets typed on the Quest) |
+| Atlas hub | Obelisk, `:8765` — LAN primary `192.168.4.51:8765`, tailnet fallback `100.65.202.81:8765`; cleartext permitted to those two hosts only (Android network security config) | Same hub the phone app uses; app authenticates the same way (hub-served provisioning, no secrets typed on the Quest) |
 | Brain | Hermes on Athena | Primary tier (Claude subscription via DirectSDK); atlas:14b remains the local last-resort through Hermes, unchanged |
 | CAD worker | Athena | Existing HA Slicer 3D stack (build123d). Input: natural-language spec → generated build123d script. Output: `.glb` + `.step` + source `.py`, saved to the slicer library |
 | Printer | Kobra S1 (Nino, `s1_`) | Send-to-print only behind the confirmation gate |
+
+### CAD quality standard (Jon's standing rule, 2026-11-19 — ALL build123d work)
+
+Every build123d output must be (1) **designed for 3D printing** — real wall thickness,
+overhang/orientation awareness, fit tolerances (pivots clear by 0.3 mm), watertight/manifold
+solids, supports considered — and (2) **visually appealing every time**: no crude
+box-and-cylinder placeholders (chamfered timber, iron fittings as darker solids, rope with a
+pouch). Acceptance checklist, printed per part by the script: `is_valid()`, solid + exported
+mesh watertight/manifold, volume > 0, minimum wall, worst overhang vs the intended print
+orientation (and that orientation), no part interference; render eyeballed. A failed line is
+fixed in the script, never waived. This doubles as the voice-CAD worker's generation checklist.
 
 ### Data flow — one CAD request
 
@@ -263,7 +279,7 @@ fewer, larger labels.
    is a valid solid (watertight where applicable), exports **glTF binary (.glb)** with
    part names preserved as node names.
 4. Hub notifies the Quest session; the app downloads the `.glb` and spawns it on the
-   holo-table at a default display scale (true scale available on request — a 80 mm
+   holo-table at a default display scale (true scale available on request — a 3 in
    bracket is small in the hand; default spawn is display-sized, with a "true scale"
    toggle).
 5. Jon manipulates locally (grab/rotate/scale/explode are client-side, zero network).

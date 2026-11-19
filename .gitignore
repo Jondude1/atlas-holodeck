@@ -14,6 +14,10 @@ app/android/
 *secret*
 *token*
 .env
+# …but app/tokens.gd is the DESIGN-token theme file (colours/grid), not a secret —
+# it must be committed or a clean clone cannot build.
+!app/tokens.gd
+!app/tokens.gd.uid
 
 # Local tooling (not part of the project)
 push_api.py

@@ -48,8 +48,8 @@ static func additive_unshaded(c: Color) -> StandardMaterial3D:
 static func titanium(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c
-	m.metallic = 0.9
-	m.roughness = 0.35
+	m.metallic = 0.85
+	m.roughness = 0.38
 	return m
 
 ## Light strips / bezel trim: unshaded, HDR albedo so the existing glow picks it up.

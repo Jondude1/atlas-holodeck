@@ -1,0 +1,318 @@
+{
+  "name": "Trebuchet",
+  "units": "in",
+  "true_dims_in": [
+    14.0,
+    7.0,
+    10.0
+  ],
+  "dims_note": "base length x base width (rails+wheels) x axle height; bbox_cocked_in is the full cocked envelope",
+  "bbox_cocked_in": [
+    14.28,
+    7.0,
+    13.35
+  ],
+  "frame": "CAD Z-up, X = throw direction, origin = ground centre of base; GLB nodes are glTF Y-up metres (x, y, z)cad -> (x, z, -y)",
+  "pose": "cocked",
+  "parts": [
+    {
+      "name": "SideRailL",
+      "dims_in": [
+        14.0,
+        0.9,
+        1.0
+      ]
+    },
+    {
+      "name": "SideRailR",
+      "dims_in": [
+        14.0,
+        0.9,
+        1.0
+      ]
+    },
+    {
+      "name": "CrossBeamFront",
+      "dims_in": [
+        0.9,
+        4.3,
+        1.0
+      ]
+    },
+    {
+      "name": "CrossBeamRear",
+      "dims_in": [
+        0.9,
+        4.3,
+        1.0
+      ]
+    },
+    {
+      "name": "AFrameL",
+      "dims_in": [
+        6.29,
+        0.7,
+        9.45
+      ]
+    },
+    {
+      "name": "AFrameR",
+      "dims_in": [
+        6.29,
+        0.7,
+        9.45
+      ]
+    },
+    {
+      "name": "StrutL",
+      "dims_in": [
+        4.144,
+        0.5,
+        4.811
+      ]
+    },
+    {
+      "name": "StrutR",
+      "dims_in": [
+        4.144,
+        0.5,
+        4.811
+      ]
+    },
+    {
+      "name": "Axle",
+      "dims_in": [
+        1.0,
+        7.0,
+        1.0
+      ]
+    },
+    {
+      "name": "ThrowingArm",
+      "dims_in": [
+        10.203,
+        1.0,
+        11.951
+      ]
+    },
+    {
+      "name": "CounterweightBox",
+      "dims_in": [
+        4.0,
+        4.0,
+        5.9
+      ]
+    },
+    {
+      "name": "WeightBlock1",
+      "dims_in": [
+        3.4,
+        2.9,
+        0.5
+      ]
+    },
+    {
+      "name": "WeightBlock2",
+      "dims_in": [
+        3.4,
+        2.9,
+        0.5
+      ]
+    },
+    {
+      "name": "WeightBlock3",
+      "dims_in": [
+        3.4,
+        2.9,
+        0.5
+      ]
+    },
+    {
+      "name": "WeightBlock4",
+      "dims_in": [
+        3.4,
+        2.9,
+        0.5
+      ]
+    },
+    {
+      "name": "WeightBlock5",
+      "dims_in": [
+        3.4,
+        2.9,
+        0.5
+      ]
+    },
+    {
+      "name": "WeightBlock6",
+      "dims_in": [
+        3.4,
+        2.9,
+        0.5
+      ]
+    },
+    {
+      "name": "HingePin",
+      "dims_in": [
+        0.7,
+        4.8,
+        0.7
+      ]
+    },
+    {
+      "name": "SlingPouch",
+      "dims_in": [
+        1.578,
+        1.578,
+        0.57
+      ]
+    },
+    {
+      "name": "Stone",
+      "dims_in": [
+        1.5,
+        1.35,
+        1.2
+      ]
+    },
+    {
+      "name": "WheelFL",
+      "dims_in": [
+        1.6,
+        0.425,
+        1.6
+      ]
+    },
+    {
+      "name": "WheelFR",
+      "dims_in": [
+        1.6,
+        0.425,
+        1.6
+      ]
+    },
+    {
+      "name": "WheelRL",
+      "dims_in": [
+        1.6,
+        0.425,
+        1.6
+      ]
+    },
+    {
+      "name": "WheelRR",
+      "dims_in": [
+        1.6,
+        0.425,
+        1.6
+      ]
+    },
+    {
+      "name": "ReleasePin",
+      "dims_in": [
+        0.9,
+        0.3,
+        2.436
+      ]
+    },
+    {
+      "name": "SlingRope",
+      "dims_in": [
+        6.777,
+        0.118,
+        1.432
+      ]
+    },
+    {
+      "name": "CockingRope",
+      "dims_in": [
+        0.947,
+        0.118,
+        0.558
+      ]
+    }
+  ],
+  "pivot": {
+    "axle_height_in": 10.0,
+    "arm": "ThrowingArm",
+    "axle": [
+      0.0,
+      0.0,
+      10.0
+    ],
+    "arm_long_in": 11.0,
+    "arm_short_in": 4.0,
+    "arm_cocked_angle_deg": 230.0,
+    "arm_rest_angle_deg": 65.0,
+    "hinge": [
+      2.282,
+      0.0,
+      12.719
+    ],
+    "hinge_in_arm_local": -3.55,
+    "arm_tip_eye": [
+      -6.929,
+      0.0,
+      1.742
+    ],
+    "sling_length_in": 7.0,
+    "pouch_home": [
+      0.6,
+      0.0,
+      0.94
+    ],
+    "pouch_attach": [
+      -0.189,
+      0.0,
+      0.59
+    ],
+    "stone_home": [
+      0.603,
+      0.0,
+      0.882
+    ],
+    "stone_radius_in": 0.75,
+    "pin_ring": [
+      -5.9,
+      0.0,
+      2.286
+    ],
+    "pin_travel_in": 1.0,
+    "cw_hang_in": 3.5,
+    "block_height_in": 0.5,
+    "block_size_in": [
+      3.4,
+      2.9,
+      0.5
+    ],
+    "counterweight_g_per_block": 38.3,
+    "counterweight_block_cm3": 77.15,
+    "counterweight_density_assumption": "PLA 1.24 g/cm3 solid x 0.4 effective",
+    "groups": {
+      "ArmPivot": [
+        "ThrowingArm"
+      ],
+      "Hanger": [
+        "CounterweightBox",
+        "HingePin",
+        "WeightBlock1",
+        "WeightBlock2",
+        "WeightBlock3",
+        "WeightBlock4",
+        "WeightBlock5",
+        "WeightBlock6"
+      ],
+      "Sling": [
+        "SlingRope",
+        "SlingPouch",
+        "Stone"
+      ],
+      "Pin": [
+        "ReleasePin"
+      ],
+      "CockingRope": [
+        "CockingRope"
+      ]
+    }
+  }
+}

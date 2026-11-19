@@ -9,10 +9,10 @@ const RING_DEG_PER_SEC := 6.0
 const TOP_Y := 0.951       # display-inset surface height in this node's space (slab top 0.95 + 1 mm)
 const SLAB_TOP := 0.95
 const SLAB_T := 0.10
-const SLAB_BODY_HALF_X := 1.0    # rectangular body; the ends taper out to 1.1 with wedges
-const SLAB_HALF_Z := 0.6
+const SLAB_BODY_HALF_X := 1.12   # rectangular body; the ends taper out to 1.22 with wedges (2.44 m = 8 ft overall)
+const SLAB_HALF_Z := 0.61   # 1.22 m = 4 ft deep
 const TAPER := 0.10
-const INSET := Vector2(1.95, 1.0)
+const INSET := Vector2(2.2, 1.0)
 const LEG := Vector3(0.10, 0.85, 0.16)
 const LEG_SPLAY_DEG := Vector2(8.0, 6.0)  # feet outward along X, along Z
 const READOUT_Z := 0.68    # floating readouts hover just past the player-facing edge
@@ -20,7 +20,9 @@ const READOUT_Y := 1.12
 
 const EDGE_ENERGY := 2.0
 const BEZEL_ENERGY := 1.4
-const LIGHT_ENERGY := 2.0
+const LIGHT_ENERGY := 2.6
+const FILL_ENERGY := 0.7
+const RIM_ENERGY := 1.2
 
 var inset_mat: ShaderMaterial   # grid shader on the display inset (main.gd drives its fade)
 var _ti_mat: StandardMaterial3D
@@ -28,6 +30,8 @@ var _apron_mat: StandardMaterial3D
 var _strip_mat: StandardMaterial3D
 var _bezel_mat: StandardMaterial3D
 var _light: OmniLight3D
+var _fill: OmniLight3D
+var _rim: OmniLight3D
 var _ring_pivot: Node3D
 var _motes: GPUParticles3D
 var _labels := {}
@@ -53,6 +57,8 @@ func set_fade(v: float) -> void:
 	_bezel_mat.albedo_color = Color(b.r, b.g, b.b)
 	inset_mat.set_shader_parameter("fade", v)
 	_light.light_energy = LIGHT_ENERGY * v
+	_fill.light_energy = FILL_ENERGY * v
+	_rim.light_energy = RIM_ENERGY * v
 
 func _box(parent: Node, nm: String, size: Vector3, pos: Vector3, mat: Material, basis := Basis.IDENTITY) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
@@ -75,7 +81,7 @@ func _build_body() -> void:
 	add_child(body)
 	var slab_y := SLAB_TOP - SLAB_T * 0.5
 
-	# slab: rectangular body + two shallow wedges sweeping each end to a soft point (2.2 m overall)
+	# slab: rectangular body + two shallow wedges sweeping each end to a soft point (2.44 m overall)
 	_box(body, "Slab", Vector3(SLAB_BODY_HALF_X * 2.0, SLAB_T, SLAB_HALF_Z * 2.0), Vector3(0, slab_y, 0), _ti_mat)
 	for sx in [-1.0, 1.0]:
 		var prism := PrismMesh.new()
@@ -90,7 +96,7 @@ func _build_body() -> void:
 		body.add_child(wedge)
 
 	# under-slab apron: slightly inset and darker, so the slab reads as floating
-	_box(body, "Apron", Vector3(1.7, 0.07, 0.9), Vector3(0, SLAB_TOP - SLAB_T - 0.035, 0), _apron_mat)
+	_box(body, "Apron", Vector3(1.94, 0.07, 0.92), Vector3(0, SLAB_TOP - SLAB_T - 0.035, 0), _apron_mat)
 
 	# continuous edge light strip along both long side edges (the signature detail)
 	for sz in [-1.0, 1.0]:
@@ -102,19 +108,35 @@ func _build_body() -> void:
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
 			var b := Basis.from_euler(Vector3(-sz * deg_to_rad(LEG_SPLAY_DEG.y), 0, sx * deg_to_rad(LEG_SPLAY_DEG.x)))
-			var top := Vector3(sx * 0.8, leg_top, sz * 0.40)
+			var top := Vector3(sx * 0.95, leg_top, sz * 0.42)
 			var leg := _box(body, "Leg%s%s" % ["R" if sx > 0 else "L", "F" if sz > 0 else "B"], LEG,
 					top + b * Vector3(0, -LEG.y * 0.5, 0), _ti_mat, b)
 			_box(leg, "Channel", Vector3(0.015, LEG.y * 0.92, 0.004), Vector3(0, 0, sz * (LEG.z * 0.5 + 0.001)), _strip_mat)
 
-## One light so the titanium has something to catch: the display glow, from just above the inset.
+## Titanium needs light to catch: the display glow from just above the inset (+ a dim player-side fill).
 func _build_light() -> void:
 	_light = OmniLight3D.new()
 	_light.name = "TableGlow"
 	_light.light_color = Tokens.HOLO_PRIMARY
-	_light.omni_range = 4.0
+	_light.omni_range = 5.0
 	_light.position = Vector3(0, 1.3, 0.3)
 	add_child(_light)
+	# one dim fill on the player side so the slab edge, apron and legs read against the room
+	_fill = OmniLight3D.new()
+	_fill.name = "PlayerFill"
+	_fill.light_color = Tokens.HOLO_PRIMARY
+	_fill.omni_range = 4.0
+	_fill.shadow_enabled = false
+	_fill.position = Vector3(0, 0.75, 1.1)
+	add_child(_fill)
+	# rim: high behind the far edge, so slab top edges and legs catch a highlight from the player's view
+	_rim = OmniLight3D.new()
+	_rim.name = "RimLight"
+	_rim.light_color = Tokens.HOLO_PRIMARY
+	_rim.omni_range = 6.0
+	_rim.shadow_enabled = false
+	_rim.position = Vector3(0, 1.9, -1.1)
+	add_child(_rim)
 
 func _build_inset() -> void:
 	var plane := PlaneMesh.new()
@@ -229,7 +251,7 @@ func _build_motes() -> void:
 	_motes.emitting = false
 	_motes.process_material = pm
 	_motes.draw_pass_1 = quad
-	_motes.visibility_aabb = AABB(Vector3(-0.7, 0.0, -0.7), Vector3(1.4, 1.2, 1.4))
+	_motes.visibility_aabb = AABB(Vector3(-1.05, 0.0, -0.7), Vector3(2.1, 1.2, 1.4))
 	_motes.position.y = TOP_Y + 0.005
 	add_child(_motes)
 

@@ -24,6 +24,13 @@ func _ready() -> void:
 		add_child(p)
 		_players[cue] = p
 
+## Plays a cue and waits until it finishes (no-op if the cue is unknown).
+static func play_and_wait(from: Node, cue: String) -> void:
+	var s := from.get_tree().get_first_node_in_group("sfx")
+	if s and s._players.has(cue):
+		s._players[cue].play()
+		await s._players[cue].finished
+
 static func play(from: Node, cue: String) -> void:
 	var s := from.get_tree().get_first_node_in_group("sfx")
 	if s and s._players.has(cue):
