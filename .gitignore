@@ -1,0 +1,24 @@
+# Godot
+.godot/
+*.import
+export_credentials.cfg
+
+# Export output
+builds/*.apk
+builds/*.aab
+app/android/
+
+# Secrets — never commit credentials of any kind
+*.keystore
+*.jks
+*secret*
+*token*
+.env
+
+# Local tooling (not part of the project)
+push_api.py
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.tmp
