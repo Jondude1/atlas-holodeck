@@ -3,6 +3,26 @@
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
 
+## ROUND 2.5 (BRIEF-round2b.md, brief #18) — DONE 2026-11-20 ~11:30 ET (Helios takeover build)
+Parts Library, hub + app. HUB (deployed live, backup atlas_voice.py.bak-20261120-r25):
+GET /atlas/library (walks the Athena save-back tree + 3d-work/library/*.stl via
+one container script; creates the drop folder), POST /atlas/library/<id>/load
+(materializes a hub job folder — spawn/edit/print reuse Round 1 machinery),
+POST .../delete {confirmed:true} (409 without), STL->GLB in the container
+(trimesh, mm->m exact), STL jobs have NO job.py: REST edit_of 409s and the
+voice route answers edit_nosource in words; print dry-run accepts model.stl.
+Tests: tests/test_voice_library.py 5/5, round1b suite 8/8 no regressions.
+LIVE-PROVEN: list returns the 2 real save-back brackets; load pulled the real
+590,276 B glb; a 20 mm calibration cube STL (left in the drop folder on
+purpose) lists at 0.79 in and its converted GLB bounds measure exactly
+0.02 m. APP: panel LIBRARY toggle (rows: name/dims/date, EDIT holodeck-only,
+DEL -> confirmation card), fetch spawns via _on_done; library_test 10/10,
+all 6 headless suites PASS, exercise 12/12, PERF 79 draw calls / 3 lights.
+Exported builds/AtlasHolodeck.apk = 83,139,827 bytes, artifact gates verified,
+signer identical to installed builds. Round 2 APK kept as
+builds/AtlasHolodeck-round2.apk. NEXT: Round 3 (fidelity + living lab,
+table-first cap applies).
+
 ## ROUND 2 (BRIEF-round2.md, brief #17) — DONE 2026-11-20 ~11:05 ET (Helios takeover build)
 All 11 items coded by Helios directly (Claude session limit). Verified:
 ALL 7 suites PASS — explode, panel, interaction, print_flow, silhouette,

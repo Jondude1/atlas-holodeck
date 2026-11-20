@@ -9,7 +9,7 @@ It REQUIRES the Bearer token from app/hub_secret.cfg on every route (so the run 
 what it received. Scenario: "ready" on connect; at +2 s a spotter "wake"; PTT (ptt_start/ptt_end) is answered with a
 conversation turn first, then a CAD turn ("cad_job", then "cad_done" ~4 s later). Nothing here touches the real hub.
 """
-import argparse, asyncio, base64, hashlib, json, os, re, struct, sys, time
+import argparse, asyncio, base64, hashlib, json, os, re, struct, sys, time, urllib.parse
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--port", type=int, default=8791)
@@ -32,7 +32,15 @@ GLB2 = open(os.path.join(A.edit_assets, "model.glb"), "rb").read() if A.edit_ass
 JOB2 = A.job2
 JOB = A.job
 T0 = time.time()
-state = {"print_calls": [], "pending_print": None, "cad2_ready_at": None, "cad_ready_at": None, "ptt_turns": 0, "audio_bytes": 0, "speaks": [], "ws_auth_ok": 0, "rest_auth_fail": 0}
+state = {"print_calls": [], "pending_print": None, "cad2_ready_at": None, "cad_ready_at": None, "ptt_turns": 0, "audio_bytes": 0, "speaks": [], "ws_auth_ok": 0, "rest_auth_fail": 0,
+         "library_deleted": [], "library_delete_calls": []}
+
+# Round 2.5 mock library: two Holodeck save-backs (the exercise's job ids) + one imported STL.
+LIBRARY = [
+    {"id": "shelf-bracket-a8b6d50939", "kind": "holodeck", "name": "Shelf Bracket", "dims_in": [4.0, 1.25, 4.0], "parts": 1, "created": 1763000100, "editable": True, "job_id": "a8b6d50939"},
+    {"id": "test-block-b7c1e44f02", "kind": "holodeck", "name": "Test Block", "dims_in": [2.0, 2.0, 2.0], "parts": 1, "created": 1763000200, "editable": True, "job_id": "b7c1e44f02"},
+    {"id": "calibration-cube-20mm.stl", "kind": "stl", "name": "calibration cube 20mm", "dims_in": [0.79, 0.79, 0.79], "parts": 1, "created": 1763000300, "editable": False, "job_id": "c09a54b4cb"},
+]
 
 def log(msg):
     line = f"[mock t+{time.time()-T0:6.2f}s] {msg}"
@@ -118,6 +126,28 @@ async def handle(reader, writer):
                               "steps": ["slice model.step with the profile", "upload the gcode to printer S1", "start the print"]},
                     "estimate": {"est_minutes": 141, "est_text": "2 h 21 min", "material": "PLA"}}
             writer.write(http(200, json.dumps(plan).encode())); await writer.drain(); return
+        if path == "/atlas/library" and method == "GET":
+            entries = [e for e in LIBRARY if e["id"] not in state["library_deleted"]]
+            log(f"REST GET /atlas/library -> {len(entries)} entries")
+            writer.write(http(200, json.dumps({"entries": entries}).encode())); await writer.drain(); return
+        m = re.match(r"^/atlas/library/(.+)/(load|delete)$", path)
+        if m and method == "POST":
+            eid = urllib.parse.unquote(m.group(1))
+            entry = next((e for e in LIBRARY if e["id"] == eid), None)
+            if not entry:
+                writer.write(http(404, b'{"detail":"no such library entry"}')); await writer.drain(); return
+            if m.group(2) == "load":
+                if entry["job_id"] == JOB2: state["cad2_ready_at"] = time.time()
+                else: state["cad_ready_at"] = time.time()
+                log(f"REST POST /atlas/library/{eid}/load -> job {entry['job_id']}")
+                writer.write(http(200, json.dumps({"job_id": entry["job_id"], "entry": entry, "manifest": MANIFEST}).encode())); await writer.drain(); return
+            req = json.loads(body or b"{}")
+            if not req.get("confirmed"):
+                log(f"REST POST /atlas/library/{eid}/delete -> 409 (not confirmed)")
+                writer.write(http(409, b'{"detail":"confirmation required: nothing is deleted without it"}')); await writer.drain(); return
+            state["library_deleted"].append(eid); state["library_delete_calls"].append(eid)
+            log(f"REST POST /atlas/library/{eid}/delete -> DELETED")
+            writer.write(http(200, json.dumps({"deleted": eid, "name": entry["name"]}).encode())); await writer.drain(); return
         m = re.match(r"^/atlas/cad-job/([a-f0-9]+)(/model)?$", path)
         if m and method == "GET":
             second = m.group(1) == JOB2 and MANIFEST2 is not None

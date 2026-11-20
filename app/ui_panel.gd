@@ -23,6 +23,17 @@ var _card_body: Label
 var _card_hint: Label
 var _card_confirm: Button
 var _card_cancel: Button
+# Round 2.5: the parts/library list toggle + delete confirmation card
+var _list_mode := "parts"                # "parts" | "library" — the scroll area below the slider shows one or the other
+var _lib_toggle: Button
+var _lib_entries: Array = []
+var _lib_card: PanelContainer
+var _lib_title: Label
+var _lib_body: Label
+var _lib_confirm: Button
+var _lib_cancel: Button
+var _lib_pending: Dictionary = {}
+const MONTHS := ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
 const SHOWN_SCALE_FROM := 0.9
 const PART_ROWS := 4
@@ -144,6 +155,7 @@ func _build_ui() -> void:
 			_print.request_for(_model))
 	box.add_child(send)
 	_build_print_card()
+	_build_lib_card()
 
 ## Shared styling for the plain action buttons (tick on hover, light pulse + confirm on press).
 func _action_button(text: String, min_size: Vector2, font_size: int) -> Button:
@@ -168,11 +180,18 @@ func _action_button(text: String, min_size: Vector2, font_size: int) -> Button:
 func _build_parts_block() -> Control:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
+	var hrow := HBoxContainer.new()
+	hrow.add_theme_constant_override("separation", 10)
+	v.add_child(hrow)
 	_parts_header = Label.new()
 	_parts_header.add_theme_font_override("font", load(Tokens.FONT_BOLD))
 	_parts_header.add_theme_font_size_override("font_size", 28)
 	_parts_header.add_theme_color_override("font_color", Tokens.HOLO_LINE)
-	v.add_child(_parts_header)
+	_parts_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hrow.add_child(_parts_header)
+	_lib_toggle = _action_button("LIBRARY ▸", Vector2(190, 44), 24)
+	_lib_toggle.pressed.connect(_toggle_list_mode)
+	hrow.add_child(_lib_toggle)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	v.add_child(h)
@@ -267,7 +286,7 @@ func _process(delta: float) -> void:
 			_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 			_safety_flip = true
 	_scale_t += delta
-	if _scale_t > 0.25 and _parts_header and _model:
+	if _scale_t > 0.25 and _parts_header and _model and _list_mode == "parts":
 		_scale_t = 0.0
 		var t := "PARTS · %d    SCALE %s" % [_part_buttons.size(), _model.scale_label()]
 		if t != _parts_header.text:
@@ -360,6 +379,8 @@ func set_model(m: Node) -> void:
 	if _model and _model != m and is_instance_valid(_model):
 		_model.clear_highlight()
 	_model = m
+	_list_mode = "parts"
+	_lib_toggle.text = "LIBRARY ▸"
 	_slider.set_value_no_signal(0.0)
 	_last_tick = 0
 	_rebuild_part_list()
@@ -481,3 +502,197 @@ func _on_print_state(s: int) -> void:
 			_card_title.text = "COULDN'T PLAN"
 			_card_body.text = _print.reason.to_upper()
 			_card_hint.text = ""
+
+# ---------------------------------------------------------------- Round 2.5: Parts Library view (brief #18)
+## The same scroll area as the part list, toggled: LIBRARY lists every part saved on Athena (Holodeck
+## save-backs + imported STLs). Tap a row to fetch it onto the table; EDIT (Holodeck parts only) fetches
+## and primes a voice revision; DEL asks on a confirmation card first — nothing is deleted from one tap.
+
+func _toggle_list_mode() -> void:
+	poke()
+	if _list_mode == "parts":
+		_list_mode = "library"
+		_lib_toggle.text = "◂ PARTS"
+		_show_library()
+	else:
+		_list_mode = "parts"
+		_lib_toggle.text = "LIBRARY ▸"
+		_rebuild_part_list()
+
+func set_list_mode(mode: String) -> void:   # test + programmatic entry point
+	if mode == "library" and _list_mode != "library":
+		_toggle_list_mode()
+	elif mode == "parts" and _list_mode != "parts":
+		_toggle_list_mode()
+
+func _bench() -> Node:
+	return get_tree().get_first_node_in_group("cad_bench")
+
+func _fmt_dims(dims: Variant) -> String:
+	if not (dims is Array) or (dims as Array).size() != 3:
+		return ""
+	var parts: Array[String] = []
+	for v in dims:
+		parts.append(("%0.2f" % float(v)).trim_suffix("0").trim_suffix("."))
+	return " × ".join(parts) + " IN"
+
+func _fmt_date(epoch: Variant) -> String:
+	var dt := Time.get_datetime_dict_from_unix_time(int(epoch))
+	return "%s %d" % [MONTHS[clampi(int(dt.get("month", 1)) - 1, 0, 11)], int(dt.get("day", 1))]
+
+func _show_library() -> void:
+	poke()
+	_parts_header.text = "LIBRARY — LOADING..."
+	for c in _parts_list.get_children():
+		c.queue_free()
+		_parts_list.remove_child(c)
+	_part_buttons.clear()
+	if Hub.base_url == "":
+		_parts_header.text = "LIBRARY — HUB OFFLINE"
+		_lib_placeholder("THE HUB ISN'T REACHABLE — THE LIBRARY LIVES ON ATHENA")
+		return
+	var bench := _bench()
+	if bench == null:
+		_lib_placeholder("NO BENCH — CAN'T FETCH")
+		return
+	_lib_entries = await bench.fetch_library()
+	if _list_mode != "library":
+		return   # the user flipped back while the list was in flight
+	_rebuild_library_list()
+
+func _lib_placeholder(text: String) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 24)
+	l.add_theme_color_override("font_color", Tokens.GRID_MINOR.lightened(0.4))
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_parts_list.add_child(l)
+
+func _rebuild_library_list() -> void:
+	poke()
+	for c in _parts_list.get_children():
+		c.queue_free()
+		_parts_list.remove_child(c)
+	_parts_header.text = "LIBRARY · %d" % _lib_entries.size()
+	if _lib_entries.is_empty():
+		_lib_placeholder("NOTHING SAVED YET — PARTS YOU MAKE LAND HERE")
+		return
+	for e in _lib_entries:
+		_parts_list.add_child(_lib_row(e))
+	_parts_scroll.scroll_vertical = 0
+
+func _lib_row(entry: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var main_b := _action_button("", Vector2(0, PART_ROW_H), 23)
+	main_b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	main_b.text = "%s · %s · %s" % [String(entry.get("name", "?")).to_upper(), _fmt_dims(entry.get("dims_in", [])), _fmt_date(entry.get("created", 0))]
+	main_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main_b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	main_b.pressed.connect(_on_lib_fetch.bind(entry))
+	row.add_child(main_b)
+	if bool(entry.get("editable", false)):
+		var edit_b := _action_button("EDIT", Vector2(88, PART_ROW_H), 22)
+		edit_b.name = "LibEdit"
+		edit_b.pressed.connect(_on_lib_edit.bind(entry))
+		row.add_child(edit_b)
+	var del_b := _action_button("DEL", Vector2(80, PART_ROW_H), 22)
+	del_b.name = "LibDel"
+	del_b.pressed.connect(request_library_delete.bind(entry))
+	row.add_child(del_b)
+	return row
+
+func library_row_count() -> int:
+	return _lib_entries.size() if _list_mode == "library" else 0
+
+func library_row_has_edit(i: int) -> bool:
+	if i < 0 or i >= _parts_list.get_child_count():
+		return false
+	return _parts_list.get_child(i).get_node_or_null("LibEdit") != null
+
+func _on_lib_fetch(entry: Dictionary) -> void:
+	var bench := _bench()
+	if bench:
+		bench.load_library(entry)
+
+func _on_lib_edit(entry: Dictionary) -> void:
+	var bench := _bench()
+	if bench == null:
+		return
+	bench.spawned.connect(func(_m: Node) -> void:
+		if _voice:
+			_voice.say("That's the %s from your library. Say the change, and I'll revise it in place." % String(entry.get("name", "part"))), CONNECT_ONE_SHOT)
+	bench.load_library(entry)
+
+# ---------------------------------------------------------- delete confirmation (never one tap)
+
+func _build_lib_card() -> void:
+	_lib_card = PanelContainer.new()
+	_lib_card.name = "LibraryCard"
+	_lib_card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var sb := _flat(Color(Tokens.HOLO_DEEP.r * 0.8, Tokens.HOLO_DEEP.g * 0.8, Tokens.HOLO_DEEP.b * 0.8, 1.0), Tokens.HOLO_CORE, 3)
+	sb.set_content_margin_all(28)
+	_lib_card.add_theme_stylebox_override("panel", sb)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 18)
+	_lib_card.add_child(box)
+	_lib_title = Label.new()
+	_lib_title.add_theme_font_override("font", load(Tokens.FONT_BOLD))
+	_lib_title.add_theme_font_size_override("font_size", 44)
+	_lib_title.add_theme_color_override("font_color", Tokens.HOLO_CORE)
+	box.add_child(_lib_title)
+	_lib_body = Label.new()
+	_lib_body.add_theme_font_size_override("font_size", 32)
+	_lib_body.add_theme_color_override("font_color", Tokens.HOLO_LINE)
+	_lib_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lib_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(_lib_body)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	box.add_child(row)
+	_lib_confirm = _action_button("DELETE IT", Vector2(0, 90), 40)
+	_lib_confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_lib_confirm.pressed.connect(confirm_library_delete)
+	row.add_child(_lib_confirm)
+	_lib_cancel = _action_button("CANCEL", Vector2(0, 90), 40)
+	_lib_cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_lib_cancel.pressed.connect(cancel_library_delete)
+	row.add_child(_lib_cancel)
+	_lib_card.visible = false
+	_vp.add_child(_lib_card)
+
+func request_library_delete(entry: Dictionary) -> void:
+	poke(3.0)
+	_lib_pending = entry
+	_lib_title.text = "DELETE FROM LIBRARY?"
+	_lib_body.text = "PART   %s\n\nThis deletes the saved files on Athena. It can't be undone." % String(entry.get("name", "?")).to_upper()
+	_lib_confirm.visible = true
+	_lib_cancel.text = "CANCEL"
+	_lib_card.visible = true
+
+func cancel_library_delete() -> void:
+	poke()
+	_lib_pending = {}
+	_lib_card.visible = false
+
+func confirm_library_delete() -> void:
+	if _lib_pending.is_empty():
+		return
+	var entry := _lib_pending
+	_lib_pending = {}
+	var bench := _bench()
+	var ok := false
+	if bench:
+		ok = await bench.delete_library(entry)
+	if ok:
+		_lib_card.visible = false
+		if _voice:
+			_voice.say("Deleted the %s from the library." % String(entry.get("name", "part")))
+		if _list_mode == "library":
+			_show_library()
+	else:
+		_lib_title.text = "COULDN'T DELETE"
+		_lib_body.text = "THE HUB DIDN'T CONFIRM THE DELETE. THE PART IS STILL IN THE LIBRARY."
+		_lib_confirm.visible = false
+		_lib_cancel.text = "DISMISS"
+		poke(3.0)

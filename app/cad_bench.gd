@@ -107,6 +107,41 @@ func _poll(job_id: String) -> void:
 				_on_failed(job_id, String(info.get("error", "")))
 				return
 
+# ---------------------------------------------------------------- Round 2.5: Parts Library (brief #18)
+## The library lives on Athena, served by the hub (/atlas/library). Loading an entry first makes it a
+## hub job, then the normal _on_done path downloads and spawns it — arrival speech, bench rules and the
+## print/edit targeting all come along for free (the hub points follow-up edits at the loaded job).
+
+func fetch_library() -> Array:
+	var info := await _get_json("/atlas/library")
+	var entries: Variant = info.get("entries", [])
+	return entries if entries is Array else []
+
+func load_library(entry: Dictionary) -> void:
+	var eid := String(entry.get("id", ""))
+	if eid == "":
+		return
+	status = "FETCHING FROM LIBRARY"
+	var res := await Hub.post_json(self, "/atlas/library/%s/load" % eid.uri_encode(), {})
+	if not bool(res.get("ok", false)):
+		status = ""
+		_log("library load failed for %s: %s" % [eid, res.get("body", {})])
+		_voice.say("I couldn't fetch that one from the library. The hub didn't answer cleanly.")
+		return
+	var job_id := String((res.get("body", {}) as Dictionary).get("job_id", ""))
+	if job_id == "":
+		status = ""
+		return
+	_handled.erase(job_id)   # re-fetching a part already spawned this session must spawn it again
+	_on_done(job_id)
+
+func delete_library(entry: Dictionary) -> bool:
+	var eid := String(entry.get("id", ""))
+	if eid == "":
+		return false
+	var res := await Hub.post_json(self, "/atlas/library/%s/delete" % eid.uri_encode(), {"confirmed": true})
+	return bool(res.get("ok", false))
+
 ## Builds the model from downloaded bytes and runs the arrival: park the old one, speak, materialize, retarget.
 func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job := "", estimate := {}) -> Node3D:
 	var old := find_by_job(parent_job)       # a revision replaces its parent's model; null = a fresh design
