@@ -355,6 +355,15 @@ fixed in the script, never waived. This doubles as the voice-CAD worker's genera
 
 ## 7. Build classes and verification gates
 
+**Known on-device bug (2026-11-19, brief #9):** the first Quest 2 run played the boot
+audio but never presented a VR frame (Meta's 3-dot loading screen stayed up). Causes
+found: preset `xr_mode=2` was invalid, so the APK carried `--xr-mode off` and no OpenXR
+loader; XR init was also a single attempt in the main scene. Hardened: `xr_mode=1`, an
+`XrBoot` autoload (per-frame retry ~5 s, `[XR]` logcat lines with msec timestamps for
+init and XRServer session signals, deterministic camera arbitration). **Headless
+captures do NOT prove XR presentation — they render through the desktop fallback
+camera. An on-device smoke test is the only proof.** Status: awaiting Jon's retest.
+
 **Two build classes (Jon's quality bar, 2026-11-19 — "This needs to be amazing
 when I install it and put it on"):**
 

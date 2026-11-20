@@ -22,21 +22,25 @@ var _ring: MeshInstance3D
 func _ready() -> void:
 	add_child(Sfx.new())
 	_apply_tokens()
-	var xr := XRServer.find_interface("OpenXR")
-	if xr and (xr.is_initialized() or xr.initialize()):
-		print("OpenXR initialized")
-		_xr_ok = true
-		get_viewport().use_xr = true
-		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)  # headset sets the pace
-		_fallback.current = false
-	else:
+	# XR startup lives in the XrBoot autoload (retries ~5 s, logs session signals, and
+	# arbitrates cameras). If it hasn't come up yet we run on the fallback camera and
+	# switch over if a retry succeeds.
+	_xr_ok = XrBoot.ready_ok
+	if not _xr_ok:
 		push_warning("OpenXR unavailable - using fallback camera")
 		_fallback.current = true
 		_fallback.look_at($HoloTable.global_position + Vector3.UP * 1.0)
+		if not XrBoot.gave_up:
+			XrBoot.xr_started.connect(_on_xr_started, CONNECT_ONE_SHOT)
 	_table.set_link("LINK — LOCAL (XR)" if _xr_ok else "LINK — FALLBACK")
 	_table.set_parts(_model.part_names().size())
 	_table.set_dims(_model.dims_text())
 	_boot()
+
+func _on_xr_started() -> void:
+	_xr_ok = true
+	_fallback.current = false
+	_table.set_link("LINK — LOCAL (XR)")
 
 ## Colours come from Tokens only; the scene file carries geometry, not colour.
 func _apply_tokens() -> void:

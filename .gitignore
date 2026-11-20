@@ -4,7 +4,7 @@
 export_credentials.cfg
 
 # Export output
-# APKs in builds/ are committed on purpose (Jon's call, 2026-11-19); other build output stays ignored
+builds/*.apk
 builds/*.aab
 app/android/
 
