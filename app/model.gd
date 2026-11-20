@@ -5,6 +5,7 @@ extends "res://grabbable.gd"
 signal labels_beat  # materialize beat 4: labels may fade in
 signal materialized
 
+const HOME_POS := Vector3(0.0, 0.951, 0.0)  # table centre, on the surface (HoloTable.TOP_Y)
 const EXPLODE_DISTANCE := 0.25
 const MATERIALIZE_TIME := 2.0
 const SCHEMATIC_LIFT := 0.002  # metres above the table surface (the model origin)
@@ -23,7 +24,8 @@ var _parked := false
 
 var _parts: Array[MeshInstance3D] = []
 var _home := {}  # part -> home position
-var _dir := {}   # part -> unit explode direction (part position - centroid)
+var _centre := {} # part -> geometry (AABB) centre in model space, assembled
+var _dir := {}   # part -> unit explode direction (geometry centre - assembly centroid)
 var _mats: Array[ShaderMaterial] = []
 var _bounds := AABB()  # model-local bounds of the assembled parts
 var _schematic: MeshInstance3D  # child of the root, NOT a part: never explodes
@@ -37,17 +39,21 @@ var _tether_alpha := 0.0
 
 func _ready() -> void:
 	super()
-	var centroid := Vector3.ZERO
 	for c in get_children():
 		if c is MeshInstance3D:
 			_parts.append(c)
-			centroid += c.position
+	# Explode direction comes from each part's GEOMETRY centre (its AABB centre in model space), not its node origin:
+	# exporters that bake vertices in world space leave every origin at 0, which used to lift all parts together.
+	var centroid := Vector3.ZERO
+	for p in _parts:
+		_centre[p] = geom_centre(p)
+		centroid += _centre[p]
 	centroid /= maxf(_parts.size(), 1)
 	center_local = centroid
 	for i in _parts.size():
 		var p := _parts[i]
 		_home[p] = p.position
-		var d: Vector3 = p.position - centroid
+		var d: Vector3 = _centre[p] - centroid
 		_dir[p] = d.normalized() if d.length() > 0.001 else Vector3.UP
 		var box: AABB = Transform3D(p.basis, p.position) * p.mesh.get_aabb()
 		_bounds = box if i == 0 else _bounds.merge(box)
@@ -64,6 +70,10 @@ func _ready() -> void:
 ## fresnel mesh hologram (cad_model.gd).
 func _make_material(p: MeshInstance3D) -> ShaderMaterial:
 	return Fx.part_material(p.mesh.get_aabb())
+
+## A part's geometry centre in model space (AABB centre through its node transform).
+static func geom_centre(p: MeshInstance3D) -> Vector3:
+	return Transform3D(p.basis, p.position) * p.mesh.get_aabb().get_center()
 
 func part_names() -> PackedStringArray:
 	var names := PackedStringArray()
@@ -119,17 +129,147 @@ func park(to: Vector3, s := 0.55) -> void:
 		t["label"].visible = false
 		t["line"].visible = false
 	_schematic.visible = false
+	_kill_move()
 	var tw := create_tween().set_parallel(true)
+	_move_tw = tw
 	tw.tween_property(self, "position", to, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(self, "scale", Vector3.ONE * s, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 func is_parked() -> bool:
 	return _parked
 
+## Back to centre stage (bench select / reset): labels, schematic and dimension lines return.
+func unpark() -> void:
+	if not _parked:
+		return
+	_parked = false
+	_schematic.visible = true
+	for l in _dim_labels:
+		l.visible = true
+	for t in _tethers:
+		t["label"].visible = true
+		t["line"].visible = true
+	_set_schematic_alpha(1.0)
+	set_tether_alpha(1.0)
+
+## Model reset (R1-3; distinct from the floor-height fix): centre of the table, upright, display scale, assembled.
+## Returns the tween so callers can await it. Interrupts any coast/settle in progress.
+func reset_pose(t := 0.6) -> Tween:
+	_cancel_motion()
+	unpark()
+	set_explode(0.0)
+	var tw := create_tween().set_parallel(true)
+	_move_tw = tw
+	tw.tween_property(self, "position", HOME_POS, t).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "quaternion", Quaternion.IDENTITY, t).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "scale", Vector3.ONE, t).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	return tw
+
+var _move_tw: Tween
+
+func _kill_move() -> void:
+	if _move_tw and _move_tw.is_valid():
+		_move_tw.kill()
+
+func _cancel_motion() -> void:
+	_kill_move()
+	mode = Mode.IDLE
+	_hands.clear()
+	set_process(false)
+
 func set_model_scale(s: float) -> void:
-	scale = Vector3.ONE * s
+	_scale_to(s)
+
+## TRUE SIZE: the scale at which the model is its real size (display_scale is the table-readable enlargement).
+func set_true_scale() -> void:
+	_scale_to(1.0 / display_scale)
+
+func _scale_to(s: float, t := 0.25) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "scale", Vector3.ONE * s, t).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+## Scale as the user reads it: 1.0 = table-readable display size; true size = 1 / display_scale.
+func scale_label() -> String:
+	var s := scale.x
+	if absf(s * display_scale - 1.0) < 0.01 and absf(display_scale - 1.0) > 0.01:
+		return "TRUE SIZE"
+	return "%s×" % _fmt_dec(s, 2)
+
+# ---------------------------------------------------------------- hover / select (R1-11, R1-6)
+
+var _hot_part: MeshInstance3D = null
+var _hot_pin := false  # a panel/list selection stays until cleared; plain hover follows the ray
+
+## Emphasise one part (or none): rim white-hot via the part's own material and its label raised to the core colour,
+## larger and forced visible. No extra nodes: costs no draw calls beyond the label that already exists.
+func highlight_part(p: MeshInstance3D, pinned := false) -> void:
+	if p == _hot_part and pinned == _hot_pin:
+		return
+	if _hot_part:
+		_style_part(_hot_part, false)
+	_hot_part = p
+	_hot_pin = pinned and p != null
+	if p:
+		_style_part(p, true)
+
+func hot_part() -> MeshInstance3D:
+	return _hot_part
+
+func clear_highlight(only_hover := false) -> void:
+	if only_hover and _hot_pin:
+		return
+	highlight_part(null)
+
+func _style_part(p: MeshInstance3D, on: bool) -> void:
+	var i := _parts.find(p)
+	if i < 0:
+		return
+	_mats[i].set_shader_parameter("flash", 0.85 if on else 0.0)
+	var t: Dictionary = _tethers[i]
+	var l: Label3D = t["label"]
+	if on:
+		l.visible = true
+		(t["line"] as MeshInstance3D).visible = true
+		l.modulate = Tokens.HOLO_CORE
+		l.font_size = 56
+	else:
+		l.font_size = 40
+		var parked_or_unseen := _parked or _tether_alpha <= 0.0
+		l.modulate = Tokens.a(Tokens.HOLO_LINE, _tether_alpha)
+		l.visible = not parked_or_unseen
+		(t["line"] as MeshInstance3D).visible = not parked_or_unseen
+
+## "UPRIGHT ARM · 02" caption of part i (the same string its tether label carries).
+func part_caption(i: int) -> String:
+	return _part_caption(_parts[i].name, i)
+
+func part_node(i: int) -> MeshInstance3D:
+	return _parts[i]
+
+func part_by_name(n: String) -> MeshInstance3D:
+	for p in _parts:
+		if p.name == n:
+			return p
+	return null
+
+## Ray (world space) vs part AABBs -> the nearest hit part, or null. Used for hover/select with the pointer.
+func pick_part(origin: Vector3, dir: Vector3) -> MeshInstance3D:
+	var best: MeshInstance3D = null
+	var best_t := INF
+	for p in _parts:
+		var inv := p.global_transform.affine_inverse()
+		var o := inv * origin
+		var d := inv.basis * dir
+		var hit: Variant = p.mesh.get_aabb().intersects_ray(o, d)
+		if hit != null:
+			var t := ((p.global_transform * (hit as Vector3)) - origin).length()
+			if t < best_t:
+				best_t = t
+				best = p
+	return best
 
 func begin_grab(hand: Node3D) -> void:
+	_kill_move()
 	super(hand)
 	Sfx.play(self, "grab")
 
@@ -242,6 +382,8 @@ func set_tether_alpha(a: float) -> void:
 	_tether_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, a * 0.8)
 	for t in _tethers:
 		t["label"].modulate = Tokens.a(Tokens.HOLO_LINE, a)
+	if _hot_part:
+		_style_part(_hot_part, true)
 
 func _build_scan_plane() -> void:
 	var quad := QuadMesh.new()

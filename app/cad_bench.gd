@@ -7,6 +7,7 @@ extends Node
 ## Voice alone never prints: this build has no print path at all (a future one is panel-confirmation only).
 
 signal spawned(model: Node3D)
+signal selected(model: Node3D)
 
 const CadModelScript := preload("res://cad_model.gd")
 const POLL_SECONDS := 3.0
@@ -31,8 +32,10 @@ func setup(table: Node3D, first_model: Node3D, panel: Node3D, hud: Node, voice: 
 	_panel = panel
 	_hud = hud
 	_voice = voice
+	add_to_group("cad_bench")
 	_active = first_model
 	_bench.append(first_model)
+	_watch(first_model)
 	voice.cad_job.connect(_on_job)
 	voice.cad_done.connect(_on_done)
 	voice.cad_failed.connect(_on_failed)
@@ -52,7 +55,7 @@ func _on_failed(job_id: String, detail: String) -> void:
 	_handled[job_id] = true
 	status = ""
 	_log("job %s failed: %s" % [job_id, detail])
-	_voice.say("I couldn't get that one to build. Try describing it a little differently.")
+	_voice.say(FailureReason.spoken(detail))     # the hub's real reason, sanitized to one sentence (R1-5)
 
 func _on_done(job_id: String) -> void:
 	if _handled.has(job_id):
@@ -101,6 +104,7 @@ func spawn(glb: PackedByteArray, manifest: Dictionary) -> Node3D:
 	m.call("hide_all")
 	_park_active()
 	_bench.append(m)
+	_watch(m)
 	_active = m
 	_trim_bench()
 	_retarget(m)
@@ -118,13 +122,56 @@ func spawn(glb: PackedByteArray, manifest: Dictionary) -> Node3D:
 	status = ""
 	return m
 
+func _watch(m: Node3D) -> void:
+	m.connect("flicked_aside", _on_flicked)
+
+## A flick that comes to rest away from the centre parks the model where it stopped (small, labels off).
+func _on_flicked(m: Node3D) -> void:
+	if m.call("is_parked"):
+		return
+	_log("flicked aside: parking %s" % m.name)
+	m.call("park", Vector3(m.position.x, m.position.y, m.position.z))
+
+## Bench select (R1-7): pull a parked model back to centre stage. It becomes the active model (panel / HUD / readouts
+## retarget); the one that was on stage parks into the slot the selected one just vacated.
+func select(m: Node3D) -> void:
+	if m == null or not (m in _bench):
+		return
+	if m == _active and not m.call("is_parked"):
+		return
+	var vacated: Vector3 = m.position
+	if _active != null and _active != m and not _active.call("is_parked"):
+		_active.call("park", Vector3(vacated.x, _active.position.y, vacated.z))
+	_active = m
+	m.call("reset_pose", 0.7)
+	_retarget(m)
+	_log("bench select: %s now active" % m.name)
+	selected.emit(m)
+
+## Model reset (R1-3): the active model back to centre, upright, display scale, assembled. If it had been parked
+## aside, it is brought back like a bench select.
+func reset_active() -> void:
+	if _active == null:
+		return
+	if _active.call("is_parked"):
+		select(_active)
+	else:
+		_active.call("reset_pose", 0.6)
+		_retarget(_active)
+
+func active_model() -> Node3D:
+	return _active
+
+func bench() -> Array[Node3D]:
+	return _bench
+
 func _on_labels_beat(m: Node3D) -> void:
 	var tw := create_tween().set_parallel(true)
 	tw.tween_method(_table.set_readout_alpha, 0.0, 1.0, 0.2)
 	tw.tween_method(m.set_tether_alpha, 0.0, 1.0, 0.3)
 
 func _park_active() -> void:
-	if _active == null:
+	if _active == null or _active.call("is_parked"):
 		return
 	var used := 0
 	for b in _bench:

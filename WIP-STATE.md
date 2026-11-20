@@ -1,7 +1,36 @@
-# WIP-STATE — Atlas Holodeck (updated 2026-11-19 ~21:30 ET)
+# WIP-STATE — Atlas Holodeck (updated 2026-11-20)
 
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
+
+## NEXT WORK: Round 1B (BRIEF-round1.md Round 1A is DONE, 2026-11-20)
+Round 1A (brief #15) built + headless-proven (explode/panel/failure/interaction tests PASS). Exported 2026-11-20 09:01 in the recovery run: builds/AtlasHolodeck.apk, 83,108,181 bytes (release export, debug cert CN=Android Debug), apksigner Verifies (v2), package com.jondude.holodeck, assets/_cl_ = --xr_mode_openxr, lib/arm64-v8a/libopenxr_loader.so present, RECORD_AUDIO + INTERNET in manifest, hub_secret.cfg baked. Not yet handed to Jon; awaiting his headset feel-test. (Earlier note claiming 'exported' was premature: the first run was killed before export.) Draw-call probe not re-run in recovery; numbers below are from the earlier run. Round 1B items, in
+ITERATION-BACKLOG.md order, are NOT started: follow-up edit-in-place (R1-4, hub keeps last job id + edit intent),
+print path (R1-8, needs Jon's sign-off before touching the printer), real silhouette schematic (R1-9), save-back
+path (R1-?), then Round 2 (smoothness: haptics, hover reticle, spawn hitch) / Round 3 (Stark fidelity).
+Round 1A as built (all in app/, no commits made):
+- Audit risk 1 REAL, fixed: explode used node origins; the glb exporter bakes world-space verts (all origins 0), so a
+  27-part model lifted straight up (old code: 0/27 parts moved in XZ). model.gd now uses each part's AABB centre
+  (also fixes center_local/grab centre). Proof: tools/explode_test.gd (old code FAIL, new PASS).
+- Audit risk 2 REAL, fixed: panel content needed 570 px in a 480 px viewport (RESET FLOOR fully off-panel). Viewport
+  now 640x720 (quad 0.8x0.9, y 1.42); part list is a fixed 4-row scroller so it never grows. tools/panel_test.gd.
+- R1-1/R1-2 grabbable.gd: plane drag at table height (yaw follows hand twist), lift >10 cm = freehand, release over
+  the slab settles (0.35 s ease, tilt levelled), off-table stays; release velocity coasts (exp friction 3.2/s slide,
+  2.4/s spin), flick resting >0.5 m from centre parks via CadBench. Constants at the top of grabbable.gd = tuning knobs.
+- R1-3 RESET MODEL (panel + LEFT menu TAP; long-press = floor fix unchanged), TRUE SIZE button, floor button renamed
+  FIX FLOOR HEIGHT, scale buttons ease.  R1-7 CadBench.select(): point right ray at a parked model + trigger = pull to
+  centre (on-stage model parks into the vacated slot; panel/HUD/readouts retarget).  R1-6 real part list (rows,
+  scroll arrows, right-stick scroll over the panel, press = pin highlight+name).  R1-5 FailureReason (failure_reason.gd):
+  hub detail -> one sanitized sentence; no hub change needed.  R1-11 A/X = extra hold-to-talk; ray hover raises the
+  part name + rim.
+- Perf: panel SubViewport now renders only while poked (pointer/voice/list) + 0.5 s idle refresh (was always).
+Headless tools (all in tools/): explode_test, panel_test, failure_test, interaction_test (46 checks), perf_probe,
+round1_capture (captures/r1-*.png). Run: godot --headless --path app --script ../tools/<name>.gd
+NOT proven headless (headset only): drag/inertia FEEL + friction/flick thresholds, ray hover on real controllers,
+A/X + menu-tap button mapping on Touch controllers, right-stick scroll, trigger-on-parked-model select, and the
+real PTT start/stop from A/X (hand logic proven, VoiceLink path was proven in brief #11).
+Known: 27-part trebuchet fixture = 128-153 draw calls (3D parts+tethers), outside the 90 budget; realistic 1-3 part
+models measure 59-63 idle / 85-89 panel-active. Parked many-part models still cost draws (R2 perf item).
 
 ## Current state: COMBINED BUILD COMPLETE — awaiting Jon's headset retest
 - The combined build (floor #10 + voice #11 with PTT addendum + lab

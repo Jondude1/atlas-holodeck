@@ -9,6 +9,8 @@ extends XRController3D
 var _held: Node = null
 var _pressing := false
 var _ptt_held := false
+var _ptt_by_ax := false
+var _hover_model: Node = null
 var _menu_down_ms := -1
 const RESET_HOLD_MS := 800
 var _last := Vector2.ZERO
@@ -28,6 +30,14 @@ func _on_pressed(action: String) -> void:
 			m.begin_grab(self)
 	elif action == "menu_button":
 		_menu_down_ms = Time.get_ticks_msec()
+	elif action == "ax_button":
+		# SPEC §5: "trigger (or A/X)". A (right) and X (left) are an additional hold-to-talk binding; neither is used for
+		# anything else, so they never fight grip (grab), trigger (UI click / bench select) or menu.
+		var va := get_tree().get_first_node_in_group("voice") as VoiceLink
+		if va and not _ptt_held:
+			_ptt_held = true
+			_ptt_by_ax = true
+			va.ptt_begin()
 	elif action == "trigger_click" and not pointer:
 		# push-to-talk, primary controller hold: the LEFT trigger. Conflict-free: the left hand has no pointer role, grip = grab,
 		# menu long-press = RESET FLOOR, and the right trigger stays the UI click. Works regardless of where anything is aimed.
@@ -37,7 +47,11 @@ func _on_pressed(action: String) -> void:
 			vl.ptt_begin()
 	elif action == "trigger_click" and pointer:
 		var hit = _hit()
-		if hit != null:
+		var parked: Node = _hover_model if _hover_model and _hover_model.is_parked() else null
+		if hit == null and parked != null:
+			# pointing at a parked model: the trigger pulls it back to centre (bench select) instead of talking
+			get_tree().get_first_node_in_group("cad_bench").select(parked)
+		elif hit != null:
 			_pressing = true
 			_send_button(Vector2(hit.x, hit.y), true)
 		else:
@@ -49,14 +63,25 @@ func _on_pressed(action: String) -> void:
 
 func _on_released(action: String) -> void:
 	if action == "menu_button":
+		# a TAP (released before the long-press fired) resets the model; the long-press is the floor-height fix
+		if _menu_down_ms >= 0 and not pointer:
+			var b := get_tree().get_first_node_in_group("cad_bench")
+			if b:
+				b.reset_active()
 		_menu_down_ms = -1
+	if action == "ax_button" and _ptt_held and _ptt_by_ax:
+		_ptt_held = false
+		_ptt_by_ax = false
+		var vx := get_tree().get_first_node_in_group("voice") as VoiceLink
+		if vx:
+			vx.ptt_end()
 	if action == "grip_click" and _held:
 		_held.end_grab(self)
 		_held = null
 	elif action == "trigger_click" and _pressing:
 		_pressing = false
 		_send_button(_last, false)
-	elif action == "trigger_click" and _ptt_held:
+	elif action == "trigger_click" and _ptt_held and not _ptt_by_ax:
 		_ptt_held = false
 		var v := get_tree().get_first_node_in_group("voice") as VoiceLink
 		if v:
@@ -86,6 +111,7 @@ func _process(_delta: float) -> void:
 	if not pointer:
 		return
 	var hit = _hit()
+	_update_hover(hit == null)
 	var length := pointer_range
 	if hit != null and hit.z < pointer_range:
 		length = hit.z
@@ -97,6 +123,7 @@ func _process(_delta: float) -> void:
 		ev.button_mask = MOUSE_BUTTON_MASK_LEFT if _pressing else 0
 		get_tree().get_first_node_in_group("ui_panel").push(ev)
 		_last = pos
+		_stick_scroll(pos, _delta)
 	if _laser:
 		_laser.scale.z = length
 		_laser.position.z = -length * 0.5
@@ -108,4 +135,43 @@ func _send_button(pos: Vector2, down: bool) -> void:
 	ev.position = pos
 	ev.global_position = pos
 	ev.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
+	get_tree().get_first_node_in_group("ui_panel").push(ev)
+
+## Pointer hover (R1-11): the part under the ray gets its name raised (and its rim lit); a parked model under the ray
+## is the bench-select target. Skipped while the ray is on the panel.
+func _update_hover(active: bool) -> void:
+	var found: Node = null
+	var part: MeshInstance3D = null
+	if active:
+		var best := INF
+		for m in get_tree().get_nodes_in_group("grabbable"):
+			if not m.has_method("pick_part"):
+				continue
+			var p: MeshInstance3D = m.pick_part(global_position, -global_basis.z)
+			if p:
+				var d := global_position.distance_to(p.global_position)
+				if d < best:
+					best = d
+					found = m
+					part = p
+	if _hover_model and _hover_model != found and is_instance_valid(_hover_model):
+		_hover_model.clear_highlight(true)
+	_hover_model = found
+	if found:
+		found.highlight_part(part)
+
+var _stick_cd := 0.0
+
+## Thumbstick up/down while the ray is on the panel scrolls whatever list is under it (wheel events into the panel).
+func _stick_scroll(pos: Vector2, dt: float) -> void:
+	_stick_cd = maxf(0.0, _stick_cd - dt)
+	var y := get_vector2("primary").y
+	if absf(y) < 0.6 or _stick_cd > 0.0:
+		return
+	_stick_cd = 0.15
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_WHEEL_UP if y > 0.0 else MOUSE_BUTTON_WHEEL_DOWN
+	ev.pressed = true
+	ev.position = pos
+	ev.global_position = pos
 	get_tree().get_first_node_in_group("ui_panel").push(ev)

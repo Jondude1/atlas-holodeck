@@ -1,3 +1,4 @@
+class_name HoloTable
 extends Node3D
 ## The SHIELD holotable (SPEC §2 / §2.6, Stark restyle): a physical dark-titanium slab on splayed
 ## legs with light channels, a continuous edge light strip, and the display inset set into the top.
@@ -15,6 +16,10 @@ const TAPER := 0.10
 const INSET := Vector2(2.2, 1.0)
 const LEG := Vector3(0.10, 0.85, 0.16)
 const LEG_SPLAY_DEG := Vector2(8.0, 6.0)  # feet outward along X, along Z
+## Table-plane work mode (R1-1/2): models slide inside PLANE_HALF (table space, metres) at TOP_Y; the slab's top is the
+## region where a released model settles back down onto the surface.
+const PLANE_HALF := Vector2(1.05, 0.45)
+const SETTLE_HALF := Vector2(1.12, 0.61)
 const READOUT_Z := 0.68    # floating readouts hover just past the player-facing edge
 const READOUT_Y := 1.12
 

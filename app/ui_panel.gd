@@ -7,13 +7,19 @@ extends Node3D
 @onready var _vp: SubViewport = $SubViewport
 @onready var _model: Node = get_node(model_path)
 var _slider: HSlider
-var _parts_label: Label
+var _parts_header: Label
+var _parts_scroll: ScrollContainer
+var _parts_list: VBoxContainer
+var _part_buttons: Array[Button] = []
+var _scale_t := 0.0
 var _voice: VoiceLink
 var _voice_label: Label
 var _mic_button: Button
 var _talk_button: Button
 
 const SHOWN_SCALE_FROM := 0.9
+const PART_ROWS := 4
+const PART_ROW_H := 44
 const TICK_STEP := 0.05  # slider ticks every 5%
 
 var _mat: StandardMaterial3D
@@ -34,6 +40,7 @@ func _ready() -> void:
 ## Boot finished: scale 0.9 -> 1 and fade in with easing.
 func reveal() -> void:
 	_shown = true
+	poke(2.0)
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(self, "scale", Vector3.ONE, 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_mat, "albedo_color:a", 1.0, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -55,13 +62,13 @@ func _build_ui() -> void:
 	panel.add_theme_stylebox_override("panel", sb)
 	_vp.add_child(panel)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 18)
+	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
 
 	var title := Label.new()
 	title.text = "ATLAS HOLODECK"
 	title.add_theme_font_override("font", load(Tokens.FONT_BOLD))
-	title.add_theme_font_size_override("font_size", 44)
+	title.add_theme_font_size_override("font_size", 40)
 	title.add_theme_color_override("font_color", Tokens.HOLO_CORE)
 	box.add_child(title)
 
@@ -78,14 +85,7 @@ func _build_ui() -> void:
 	box.add_child(slider)
 	_slider = slider
 
-	var parts := Label.new()
-	parts.text = "Parts: " + ", ".join(_model.part_names())
-	parts.add_theme_font_size_override("font_size", 28)
-	parts.add_theme_color_override("font_color", Tokens.HOLO_LINE)
-	parts.clip_text = true
-	parts.custom_minimum_size = Vector2(0, 34)
-	box.add_child(parts)
-	_parts_label = parts
+	box.add_child(_build_parts_block())
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
@@ -93,7 +93,7 @@ func _build_ui() -> void:
 	for s in [0.5, 1.0, 2.0]:
 		var b := Button.new()
 		b.text = "%s×" % s
-		b.custom_minimum_size = Vector2(150, 60)
+		b.custom_minimum_size = Vector2(110, 60)
 		b.add_theme_font_size_override("font_size", 32)
 		b.add_theme_color_override("font_color", Tokens.HOLO_LINE)
 		b.add_theme_color_override("font_hover_color", Tokens.HOLO_CORE)
@@ -106,32 +106,153 @@ func _build_ui() -> void:
 		b.pressed.connect(_on_button_pressed.bind(b))
 		b.mouse_entered.connect(Sfx.play.bind(self, "tick"))
 		row.add_child(b)
+	var true_b := _action_button("TRUE SIZE", Vector2(0, 60), 28)
+	true_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	true_b.pressed.connect(func() -> void: _model.set_true_scale())
+	row.add_child(true_b)
 
 	box.add_child(_build_talk_button())
 	box.add_child(_build_voice_row())
 
-	var reset := Button.new()
-	reset.text = "RESET FLOOR"
-	reset.custom_minimum_size = Vector2(0, 60)
-	reset.add_theme_font_size_override("font_size", 32)
-	reset.add_theme_color_override("font_color", Tokens.HOLO_LINE)
-	reset.add_theme_color_override("font_hover_color", Tokens.HOLO_CORE)
-	reset.add_theme_color_override("font_pressed_color", Tokens.HOLO_CORE)
-	reset.add_theme_stylebox_override("normal", _flat(Tokens.a(Tokens.HOLO_DEEP, Tokens.PANEL_ALPHA), Tokens.HOLO_LINE, 1))
-	reset.add_theme_stylebox_override("hover", _flat(Tokens.a(Tokens.HOLO_PRIMARY, 0.45), Tokens.HOLO_LINE, 2))
-	reset.add_theme_stylebox_override("pressed", _flat(Tokens.a(Tokens.HOLO_CORE, 0.4), Tokens.HOLO_CORE, 2))
-	reset.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	reset.pressed.connect(XrBoot.reset_floor.bind("panel"))
-	reset.pressed.connect(_on_button_pressed.bind(reset))
-	reset.mouse_entered.connect(Sfx.play.bind(self, "tick"))
-	box.add_child(reset)
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 16)
+	var reset_model := _action_button("RESET MODEL", Vector2(0, 60), 30)   # model back to table centre (cad_bench)
+	reset_model.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reset_model.pressed.connect(func() -> void:
+		var bench := get_tree().get_first_node_in_group("cad_bench")
+		if bench:
+			bench.reset_active()
+		else:
+			_model.reset_pose())
+	bottom.add_child(reset_model)
+	var fix_floor := _action_button("FIX FLOOR HEIGHT", Vector2(0, 60), 30)  # was RESET FLOOR: moves YOUR height, not the model
+	fix_floor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fix_floor.pressed.connect(XrBoot.reset_floor.bind("panel"))
+	bottom.add_child(fix_floor)
+	box.add_child(bottom)
+
+## Shared styling for the plain action buttons (tick on hover, light pulse + confirm on press).
+func _action_button(text: String, min_size: Vector2, font_size: int) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = min_size
+	b.add_theme_font_size_override("font_size", font_size)
+	b.add_theme_color_override("font_color", Tokens.HOLO_LINE)
+	b.add_theme_color_override("font_hover_color", Tokens.HOLO_CORE)
+	b.add_theme_color_override("font_pressed_color", Tokens.HOLO_CORE)
+	b.add_theme_stylebox_override("normal", _flat(Tokens.a(Tokens.HOLO_DEEP, Tokens.PANEL_ALPHA), Tokens.HOLO_LINE, 1))
+	b.add_theme_stylebox_override("hover", _flat(Tokens.a(Tokens.HOLO_PRIMARY, 0.45), Tokens.HOLO_LINE, 2))
+	b.add_theme_stylebox_override("pressed", _flat(Tokens.a(Tokens.HOLO_CORE, 0.4), Tokens.HOLO_CORE, 2))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.pressed.connect(_on_button_pressed.bind(b))
+	b.mouse_entered.connect(Sfx.play.bind(self, "tick"))
+	return b
+
+## The real part list (R1-6): header with count + scale readout, a scrollable column of one button per named part
+## (press = pin the part's highlight + name on the model, press again to clear), and up/down scroll buttons for the
+## pointer (a controller can't drag-scroll).
+func _build_parts_block() -> Control:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	_parts_header = Label.new()
+	_parts_header.add_theme_font_override("font", load(Tokens.FONT_BOLD))
+	_parts_header.add_theme_font_size_override("font_size", 28)
+	_parts_header.add_theme_color_override("font_color", Tokens.HOLO_LINE)
+	v.add_child(_parts_header)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	v.add_child(h)
+	_parts_scroll = ScrollContainer.new()
+	_parts_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_parts_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	_parts_scroll.custom_minimum_size = Vector2(0, PART_ROWS * (PART_ROW_H + 4) - 4)
+	_parts_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(_parts_scroll)
+	_parts_list = VBoxContainer.new()
+	_parts_list.add_theme_constant_override("separation", 4)
+	_parts_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_parts_scroll.add_child(_parts_list)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	for dir in [-1, 1]:
+		var sb := _action_button("▲" if dir < 0 else "▼", Vector2(64, (PART_ROWS * (PART_ROW_H + 4) - 12) / 2), 28)
+		sb.add_theme_stylebox_override("normal", StyleBoxEmpty.new())   # text-only at rest: one 2D draw instead of two
+		sb.pressed.connect(scroll_parts.bind(dir))
+		col.add_child(sb)
+	h.add_child(col)
+	_rebuild_part_list()
+	return v
+
+func scroll_parts(dir: int) -> void:
+	poke()
+	_parts_scroll.scroll_vertical = maxi(0, _parts_scroll.scroll_vertical + dir * (PART_ROW_H + 4) * 3)
+
+func _rebuild_part_list() -> void:
+	poke()
+	for c in _parts_list.get_children():
+		c.queue_free()
+		_parts_list.remove_child(c)
+	_part_buttons.clear()
+	var names: PackedStringArray = _model.part_names()
+	_parts_header.text = "PARTS · %d    SCALE %s" % [names.size(), _model.scale_label()]
+	for i in names.size():
+		var b := _action_button(_model.part_caption(i), Vector2(0, PART_ROW_H), 26)
+		b.name = "Part%d" % i
+		b.toggle_mode = true
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())    # rows are text at rest (hover/pressed draw the box)
+		b.add_theme_stylebox_override("pressed", _flat(Tokens.a(Tokens.HOLO_CORE, 0.4), Tokens.HOLO_CORE, 2))
+		b.toggled.connect(_on_part_toggled.bind(i))
+		_parts_list.add_child(b)
+		_part_buttons.append(b)
+	_parts_scroll.scroll_vertical = 0
+
+func _on_part_toggled(on: bool, i: int) -> void:
+	if on:
+		for k in _part_buttons.size():           # one pinned part at a time
+			if k != i and _part_buttons[k].button_pressed:
+				_part_buttons[k].set_pressed_no_signal(false)
+		_model.highlight_part(_model.part_node(i), true)
+	else:
+		_model.clear_highlight()
+
+## The panel is static most of the time, so its SubViewport renders only while something is happening (pointer input,
+## voice state, list/model change = poke) plus one refresh every PANEL_IDLE_REFRESH s so nothing can go stale. Its 2D
+## draws were ~34 of the frame's draw calls when it re-rendered every frame (brief #15 budget).
+const PANEL_IDLE_REFRESH := 0.5
+const PANEL_POKE_S := 1.2
+var _poke_t := PANEL_POKE_S
+var _idle_t := 0.0
+
+func poke(seconds := PANEL_POKE_S) -> void:
+	_poke_t = maxf(_poke_t, seconds)
+
+func _process(delta: float) -> void:
+	if _poke_t > 0.0:
+		_poke_t -= delta
+		_idle_t = 0.0
+		_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	else:
+		_idle_t += delta
+		if _idle_t >= PANEL_IDLE_REFRESH:
+			_idle_t = 0.0
+			_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		elif _vp.render_target_update_mode == SubViewport.UPDATE_ALWAYS:
+			_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_scale_t += delta
+	if _scale_t > 0.25 and _parts_header and _model:
+		_scale_t = 0.0
+		var t := "PARTS · %d    SCALE %s" % [_part_buttons.size(), _model.scale_label()]
+		if t != _parts_header.text:
+			_parts_header.text = t
+			poke()
 
 ## Big HOLD-TO-TALK control (primary way to talk): press = mic live + LISTENING + tone, release = the utterance is sent.
 func _build_talk_button() -> Button:
 	_talk_button = Button.new()
 	_talk_button.text = "HOLD TO TALK"
 	_talk_button.name = "TalkButton"
-	_talk_button.custom_minimum_size = Vector2(0, 96)
+	_talk_button.custom_minimum_size = Vector2(0, 84)
 	_talk_button.add_theme_font_override("font", load(Tokens.FONT_BOLD))
 	_talk_button.add_theme_font_size_override("font_size", 52)
 	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
@@ -188,6 +309,7 @@ func bind_voice(v: VoiceLink) -> void:
 	_on_voice_state(v.state)
 
 func _on_voice_state(s: int) -> void:
+	poke()
 	var live := _voice.is_streaming()
 	var col := Tokens.GRID_MINOR
 	match s:
@@ -208,12 +330,15 @@ func _on_voice_state(s: int) -> void:
 
 ## Retarget the explode slider / parts line / scale buttons to a newly spawned model.
 func set_model(m: Node) -> void:
+	if _model and _model != m and is_instance_valid(_model):
+		_model.clear_highlight()
 	_model = m
 	_slider.set_value_no_signal(0.0)
 	_last_tick = 0
-	_parts_label.text = "Parts: " + ", ".join(m.part_names())
+	_rebuild_part_list()
 
 func _on_slider(v: float) -> void:
+	poke()
 	var step := int(v / TICK_STEP)
 	if step != _last_tick:
 		_last_tick = step
@@ -249,4 +374,5 @@ func pick(origin: Vector3, dir: Vector3) -> Variant:
 	return Vector3(uv.x * _vp.size.x, uv.y * _vp.size.y, t * dir.length())
 
 func push(ev: InputEvent) -> void:
+	poke()
 	_vp.push_input(ev)
