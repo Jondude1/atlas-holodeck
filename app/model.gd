@@ -217,6 +217,19 @@ func highlight_part(p: MeshInstance3D, pinned := false) -> void:
 func hot_part() -> MeshInstance3D:
 	return _hot_part
 
+## Round 2 (R2-2): whole-model hover glow for PARKED models — the
+## bench-select affordance. Every part rim-lights together so the parked
+## model reads as one selectable object; labels stay as they are.
+var _all_hot := false
+
+func set_all_hot(on: bool) -> void:
+	if on == _all_hot:
+		return
+	_all_hot = on
+	for i in _parts.size():
+		var rest := 0.85 if _parts[i] == _hot_part else 0.0
+		_mats[i].set_shader_parameter("flash", 0.6 if on else rest)
+
 func clear_highlight(only_hover := false) -> void:
 	if only_hover and _hot_pin:
 		return
@@ -279,17 +292,26 @@ func end_grab(hand: Node3D) -> void:
 	super(hand)
 	Sfx.play(self, "grab")
 
+## Round 2 (R2-4/R2-5): the silhouette paint is the single most expensive
+## step of building a model (~0.35-0.45 s of CPU rasterising) and it used
+## to happen synchronously inside _ready — one frozen frame at spawn AND
+## at boot (the demo bracket builds the same way). The mesh + material
+## are still built immediately; only the texture paint is deferred to
+## the next idle frame, and materialize's schematic fade waits for it.
+var _schem_foot := Rect2()
+var _schem_quad_m := 0.0
+var _schematic_ready := false
+var _schem_fade_pending := false
+
 func _build_schematic() -> void:
-	var foot := Rect2(_bounds.position.x, _bounds.position.z, _bounds.size.x, _bounds.size.z)
-	var quad_m := maxf(foot.size.x, foot.size.y) * 1.7
+	_schem_foot = Rect2(_bounds.position.x, _bounds.position.z, _bounds.size.x, _bounds.size.z)
+	_schem_quad_m = maxf(_schem_foot.size.x, _schem_foot.size.y) * 1.7
 	var quad := QuadMesh.new()
-	quad.size = Vector2.ONE * quad_m
+	quad.size = Vector2.ONE * _schem_quad_m
 	_schematic_mat = StandardMaterial3D.new()
 	_schematic_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_schematic_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_schematic_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# R1-12: the real part outline (top-down silhouette + actual through-holes); Blueprint.legacy = the old bbox + bolt layer
-	_schematic_mat.albedo_texture = Blueprint.make(foot, quad_m) if Blueprint.legacy else Blueprint.make_silhouette(_parts, foot, quad_m)
 	_schematic = MeshInstance3D.new()
 	_schematic.name = "Schematic"
 	_schematic.mesh = quad
@@ -297,6 +319,16 @@ func _build_schematic() -> void:
 	_schematic.rotation_degrees.x = -90.0  # lie flat, texture top = -Z
 	_schematic.position = Vector3(_bounds.get_center().x, SCHEMATIC_LIFT, _bounds.get_center().z)
 	add_child(_schematic)
+	call_deferred("_paint_schematic")
+
+func _paint_schematic() -> void:
+	# R1-12: the real part outline (top-down silhouette + actual through-holes); Blueprint.legacy = the old bbox + bolt layer
+	_schematic_mat.albedo_texture = Blueprint.make(_schem_foot, _schem_quad_m) if Blueprint.legacy else Blueprint.make_silhouette(_parts, _schem_foot, _schem_quad_m)
+	_schematic_ready = true
+	if _schem_fade_pending:
+		_schem_fade_pending = false
+		var tw := create_tween()
+		Ease.fd(tw.tween_method(_set_schematic_alpha, 0.0, 1.0, 0.5))
 
 ## Flat X / Z size labels just outside the blueprint's dimension lines.
 func _build_dim_labels() -> void:
@@ -454,16 +486,19 @@ func materialize() -> void:
 		m.set_shader_parameter("y0", y_lo)
 		m.set_shader_parameter("y1", y_hi)
 	var tw := create_tween().set_parallel(true)
-	tw.tween_method(_set_schematic_alpha, 0.0, 1.0, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_method(_set_param.bind(&"wire"), 0.0, 1.0, 0.35)
+	if _schematic_ready:
+		Ease.fd(tw.tween_method(_set_schematic_alpha, 0.0, 1.0, 0.5))
+	else:
+		_schem_fade_pending = true  # R2-4: _paint_schematic runs this fade when the texture lands
+	Ease.fd(tw.tween_method(_set_param.bind(&"wire"), 0.0, 1.0, 0.35))
 	tw.tween_method(_set_param.bind(&"scan"), 0.0, 1.15, 1.1).set_delay(0.35) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_callback(_scan_plane_begin).set_delay(0.35)
 	tw.tween_method(_set_scan_plane, 0.0, 1.0, 1.1).set_delay(0.35) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tw.tween_method(_set_scan_plane_alpha, SCAN_PLANE_ALPHA, 0.0, 0.25).set_delay(1.2)
+	Ease.fd(tw.tween_method(_set_scan_plane_alpha, SCAN_PLANE_ALPHA, 0.0, 0.25).set_delay(1.2))
 	tw.tween_callback(func() -> void: _scan_plane.visible = false).set_delay(1.45)
-	tw.tween_method(_set_param.bind(&"flash"), 1.0, 0.0, 0.5).set_delay(1.35)
+	Ease.fd(tw.tween_method(_set_param.bind(&"flash"), 1.0, 0.0, 0.5).set_delay(1.35))
 	tw.tween_callback(labels_beat.emit).set_delay(1.75)
 	tw.tween_callback(materialized.emit).set_delay(MATERIALIZE_TIME)
 	await materialized

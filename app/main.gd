@@ -20,6 +20,14 @@ var _xr_ok := false
 var _ring_mat: ShaderMaterial
 var _ring: MeshInstance3D
 
+## Round 2 (R2-8): the boot ring sequence is skippable — any controller
+## button press jumps to the normal completion path (materialize +
+## greeting still happen). _boot_finished guards against double-running
+## the completion when the killed tweens' coroutine is abandoned.
+var _booting := false
+var _boot_finished := false
+var _boot_tweens: Array[Tween] = []
+
 func _ready() -> void:
 	add_child(Sfx.new())
 	_apply_tokens()
@@ -95,7 +103,44 @@ func _tween(setter: Callable, from: float, to: float, dur: float,
 		trans := Tween.TRANS_CUBIC, ease_type := Tween.EASE_OUT) -> Signal:
 	var tw := create_tween()
 	tw.tween_method(setter, from, to, dur).set_trans(trans).set_ease(ease_type)
+	if _booting:
+		_boot_tweens.append(tw)
 	return tw.finished
+
+func _skip_boot() -> void:
+	if not _booting or _boot_finished:
+		return
+	for tw in _boot_tweens:
+		if tw and tw.is_valid():
+			tw.kill()
+	_boot_tweens.clear()
+	# Final visual state of the ring sequence, then the normal path.
+	_set_ring(1.0, &"reveal")
+	_set_ring(1.0, &"progress")
+	_set_ring(0.0, &"pulse")
+	_set_ring(0.0, &"fade")
+	_set_fade(1.0)
+	if _ring:
+		_ring.queue_free()
+		_ring = null
+	print("boot skipped by input")
+	_finish_boot()
+
+func _finish_boot() -> void:
+	if _boot_finished:
+		return
+	_boot_finished = true
+	_booting = false
+	_on_boot_complete()
+
+func _on_any_controller_button(_name: String) -> void:
+	if _booting:
+		_skip_boot()
+
+func _input(event: InputEvent) -> void:
+	# Desktop/headless convenience: a physical key also skips.
+	if _booting and event is InputEventKey and (event as InputEventKey).pressed:
+		_skip_boot()
 
 func _set_ring(v: float, param: StringName) -> void:
 	_ring_mat.set_shader_parameter(param, v)
@@ -107,6 +152,11 @@ func _set_fade(v: float) -> void:
 	_table.scale = Vector3.ONE * lerpf(0.94, 1.0, v)
 
 func _boot() -> void:
+	_booting = true
+	for hand_path in ["XROrigin3D/LeftHand", "XROrigin3D/RightHand"]:
+		var c := get_node_or_null(hand_path) as XRController3D
+		if c and not c.button_pressed.is_connected(_on_any_controller_button):
+			c.button_pressed.connect(_on_any_controller_button)
 	_set_fade(0.0)
 	_model.hide_all()
 	_ring = MeshInstance3D.new()
@@ -128,8 +178,10 @@ func _boot() -> void:
 	_tween(_set_ring.bind(&"pulse"), 1.0, 0.0, 0.2)
 	_tween(_set_ring.bind(&"fade"), 1.0, 0.0, 0.5)
 	await _tween(_set_fade, 0.0, 1.0, 1.5)                                              # room + table up
+	if _boot_finished:
+		return  # a skip already ran the completion path; the ring is freed there
 	_ring.queue_free()
-	_on_boot_complete()
+	_finish_boot()
 
 func _on_boot_complete() -> void:
 	print("boot complete")
@@ -140,9 +192,27 @@ func _on_boot_complete() -> void:
 	_model.labels_beat.connect(_on_labels_beat, CONNECT_ONE_SHOT)
 	await _model.materialize()
 	print("materialize complete")
-	await Sfx.play_and_wait(self, "greeting")  # graceful fallback: always plays, after materialize
-	await Sfx.play_and_wait(self, "confirm_render")  # never overlaps the greeting
+	await _greet()
 	_voice.start()  # brief #11: the mic opens only after the recorded lines, so the greeting is never "heard"
+
+## Round 2 (R2-9): hub-driven greeting. If the hub answered the boot
+## probe, Atlas greets through the hub's own voice with real context
+## (time of day); the recorded clips remain the offline fallback —
+## never an error screen, never silence.
+func _greet() -> void:
+	# The boot probe runs un-awaited; give it a short grace window so a
+	# slow-but-alive hub still gets to speak the greeting.
+	var waited := 0.0
+	while Hub.link == "" and waited < 4.0:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+	if Hub.base_url != "":
+		var hour := int(Time.get_datetime_dict_from_system().get("hour", 12))
+		var part := "morning" if hour < 12 else ("afternoon" if hour < 18 else "evening")
+		await _voice.say("Good %s, Jon. The holodeck is ready. Hold the left trigger and ask me to make something." % part)
+	else:
+		await Sfx.play_and_wait(self, "greeting")
+	await Sfx.play_and_wait(self, "confirm_render")  # never overlaps the greeting
 
 func _on_labels_beat() -> void:
 	_tween(_table.set_readout_alpha, 0.0, 1.0, 0.2)

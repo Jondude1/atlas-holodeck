@@ -17,10 +17,19 @@ var _last := Vector2.ZERO
 @onready var _laser: Node3D = get_node_or_null("Laser")
 
 func _ready() -> void:
+	add_to_group("holodeck_hands")
 	button_pressed.connect(_on_pressed)
 	button_released.connect(_on_released)
 	if _laser:
 		_laser.visible = pointer
+
+## Round 2 (R2-1): short, distinct haptic confirmations — grab, release,
+## select, panel poke, materialize. No-op unless XR is actually live, so
+## headless tests and the fallback camera never touch the API.
+func buzz(duration := 0.03, amplitude := 0.4) -> void:
+	if not XrBoot.ready_ok:
+		return
+	trigger_haptic_pulse("haptic", 0.0, amplitude, duration, 0.0)
 
 func _on_pressed(action: String) -> void:
 	if action == "grip_click" and (_held == null or not is_instance_valid(_held)):
@@ -51,9 +60,11 @@ func _on_pressed(action: String) -> void:
 		if hit == null and parked != null:
 			# pointing at a parked model: the trigger pulls it back to centre (bench select) instead of talking
 			get_tree().get_first_node_in_group("cad_bench").select(parked)
+			buzz(0.04, 0.45)  # R2-1: select confirmed in the hand
 		elif hit != null:
 			_pressing = true
 			_send_button(Vector2(hit.x, hit.y), true)
+			buzz(0.015, 0.25)  # R2-1: panel poke tick
 		else:
 			# secondary PTT: the right trigger when aimed off the panel (on the panel it clicks UI)
 			var v := get_tree().get_first_node_in_group("voice") as VoiceLink
@@ -157,9 +168,16 @@ func _update_hover(active: bool) -> void:
 					part = p
 	if _hover_model and _hover_model != found and is_instance_valid(_hover_model):
 		_hover_model.clear_highlight(true)
+		if _hover_model.has_method("set_all_hot"):
+			_hover_model.set_all_hot(false)
 	_hover_model = found
 	if found:
-		found.highlight_part(part)
+		if found.has_method("is_parked") and found.is_parked():
+			# R2-2: a parked model under the ray glows as ONE selectable
+			# object (bench select), not as a single named part.
+			found.set_all_hot(true)
+		else:
+			found.highlight_part(part)
 
 var _stick_cd := 0.0
 

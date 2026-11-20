@@ -3,6 +3,81 @@
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
 
+## ROUND 2 (BRIEF-round2.md, brief #17) — DONE 2026-11-20 ~11:05 ET (Helios takeover build)
+All 11 items coded by Helios directly (Claude session limit). Verified:
+ALL 7 suites PASS — explode, panel, interaction, print_flow, silhouette,
+failure, and the full round1b exercise 12/12 (exit 0) against the mock
+hub; PERF 76 draw calls / 3 lights with a CAD model on stage (budget 90).
+Exported builds/AtlasHolodeck.apk = 83,132,355 bytes; artifact gates
+verified by Helios (--xr_mode_openxr, libopenxr_loader.so, RECORD_AUDIO,
+package com.jondude.holodeck, hub_secret baked, signer SHA-256 IDENTICAL
+to the installed Round 1B build so it installs over it). Round 1B APK
+kept as builds/AtlasHolodeck-round1b.apk.
+TWO REAL BUGS found + fixed by the exercise (both pre-existing risks,
+not Round 2 regressions): (1) Sfx.play_and_wait awaited the raw audio
+`finished` signal uncapped — under a windowed dummy-audio run it never
+fired and boot hung forever before voice start; now deadline-capped
+(clip length + 1.5 s). (2) Hub probe timeout 2.0 s was too tight for a
+frame-polled HTTPRequest on a loaded renderer — the probe falsely
+reported LOCAL ONLY and voice arming fell into the long retry backoff;
+_status_ok + _fetch_brain now 5.0 s. (The sandbox's llvmpipe <1 FPS
+boot is what exposed both; on the Quest at 72-90 FPS neither bit, but
+the fixes are strictly safer.) Jon's steering (2026-11-20): TABLE
+FUNCTION FIRST — hobbyist engineering workspace; atmosphere secondary;
+backlog header carries the rule. Firewall blocker RESOLVED same day
+(UFW LAN rule added with Jon-provided sudo; LAN path proven from the
+Pi) — in-headset voice/CAD unblocked. NEXT: Round 2.5 Parts Library.
+
+## ⚠ CLAUDE SESSION LIMIT — TAKEOVER RECORD (2026-11-20 ~09:58 ET)
+The Round 2 Claude Code run (BRIEF-round2.md) hit the session limit
+IMMEDIATELY ("You've hit your session limit · resets 12:40pm
+America/New_York") — it changed NO code. Per Jon's takeover order,
+Helios coded Round 2 DIRECTLY in this tree (same brief, same gates).
+When Claude resumes, it re-reads this file + git log/diff first.
+Round 1B commit+push DID complete before the stall: remote head
+de6cfe58 (hub_secret not in commit — verified count 0).
+Takeover progress (Helios, direct):
+- [x] R2-10 render settings: project.godot — MSAA 2x (anti_aliasing/
+  quality/msaa_3d=2), openxr/display_refresh_rate=90.0, foveation_level=2.
+  On-device effect is Jon-verifiable only.
+- [x] R2-7 CAD stage narration: cad_bench.gd maps the hub job's real
+  `stage` (queued/writing/repairing/building/fetching/saving) into the
+  status text with elapsed seconds (was one blanket "BUILDING n s").
+- [x] R2-11 real brain tier: hub /atlas/voice-status now returns
+  brain_model + brain_local (DEPLOYED to Obelisk 2026-11-20, backup
+  atlas_voice.py.bak-20261120-r2, md5 verified, atlas-server restarted;
+  phone routes re-verified: status 200, ask POST 401 w/o token,
+  transcribe 200). Live answer: atlas:14b / local=true. App: Hub.probe
+  fetches the tier after a base wins; HUD shows e.g. "LOCAL · ATLAS:14B",
+  "HUB" if the fetch fails, "OFFLINE" if no hub. (Was blanket "HERMES".)
+- [x] R2-8 skippable boot: any controller button (or desktop key) kills
+  the boot tweens, sets final ring/fade state, runs the normal
+  completion once (_boot_finished guard). Headless boot verified clean.
+- [x] R2-1 haptics: hand.gd buzz() (no-op unless XrBoot.ready_ok) wired
+  to grab (0.03s/0.5), release (0.02/0.3), bench select (0.04/0.45),
+  panel poke (0.015/0.25), materialize-complete both hands (0.06/0.3).
+- [x] R2-3 easing: app/ease.gd (class_name Ease — mv = cubic-out,
+  fd = sine-in-out); the linear materialize fades, tether/readout
+  fades and button-press fade now use it. NOTE: after adding a
+  class_name file, run `godot --headless --path app --import` once or
+  every script fails with "Identifier Ease not declared".
+- [x] R2-2 hover: parked models glow whole-model (model.set_all_hot,
+  flash 0.6 all parts, labels untouched) as the bench-select affordance;
+  active-model per-part hover unchanged; panel buttons already had
+  hover styleboxes.
+- [x] R2-9 hub greeting: main._greet() — hub answered => Atlas speaks a
+  time-of-day greeting via hub TTS (say()); offline => recorded clips.
+  2.5 s grace for the un-awaited boot probe. confirm_render follows both.
+- [x] R2-6 panel: idle is now UPDATE_WHEN_DIRTY + a 5 s safety pulse
+  (was a full re-render every 0.5 s, ~34 draw calls each, forever).
+- [x] R2-4/R2-5 hitch: model._build_schematic no longer paints inline;
+  the silhouette texture is painted in a deferred call and materialize's
+  schematic fade waits for it (_schem_fade_pending). Same path serves
+  the boot demo bracket (R2-5). Paint cost itself unchanged (~0.4 s on
+  its own frame instead of stacked onto the spawn frame).
+- [ ] Full test suites + headless boot + export + gates + captures —
+  IN PROGRESS (Helios).
+
 ## ROUND 1B (BRIEF-round1b.md, brief #16) — DONE 2026-11-20, exported, awaiting Jon's headset feel-test
 No git commits made. Hub source of truth: `~/workspace/atlas-overlay-build/repo/obelisk/atlas_voice.py` (pre-change copy kept at
 `.atlas_voice.py.pre-round1b`). **DEPLOYED to the live hub** (Obelisk /home/jon/Projects/Anzu-1/obelisk/atlas_voice.py, md5 148e6ae4...;

@@ -9,7 +9,9 @@ static var base_url := ""
 
 ## Link state for the HUD (brief #8): real values only. "" until the boot hub check has run.
 static var link := ""    # "LAN" | "TAILNET" | "LOCAL ONLY"
-static var brain := ""   # "HERMES" when a hub answered, else "OFFLINE" (the hub owns the tier; we only know reachability)
+static var brain := ""   # Round 2 (R2-11): the hub's REAL reported chat tier from /atlas/voice-status
+                         # (e.g. "LOCAL · ATLAS:14B"); "HUB" when a hub answered but the tier fetch
+                         # failed; "OFFLINE" when nothing answered. Never a guessed label.
 
 static var _token := ""
 static var _token_loaded := false
@@ -47,15 +49,35 @@ static func probe(host: Node) -> bool:
 		if await _status_ok(host, cands[i]):
 			base_url = cands[i]
 			link = labels[mini(i, 1)]
-			brain = "HERMES"
+			brain = await _fetch_brain(host, cands[i])
 			return true
 	link = "LOCAL ONLY"
 	brain = "OFFLINE"
 	return false
 
+## The hub's configured chat tier, straight from /atlas/voice-status.
+static func _fetch_brain(host: Node, base: String) -> String:
+	var http := HTTPRequest.new()
+	http.timeout = 5.0
+	host.add_child(http)
+	if http.request(base + "/atlas/voice-status", auth_headers()) != OK:
+		http.queue_free()
+		return "HUB"
+	var res: Array = await http.request_completed
+	http.queue_free()
+	if res[0] != HTTPRequest.RESULT_SUCCESS or res[1] < 200 or res[1] >= 300:
+		return "HUB"
+	var data = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+	if typeof(data) != TYPE_DICTIONARY:
+		return "HUB"
+	var model := String(data.get("brain_model", "")).strip_edges()
+	if model == "":
+		return "HUB"
+	return ("LOCAL · " + model.to_upper()) if bool(data.get("brain_local", false)) else model.to_upper()
+
 static func _status_ok(host: Node, base: String) -> bool:
 	var http := HTTPRequest.new()
-	http.timeout = 2.0
+	http.timeout = 5.0  # frame-polled: a loaded renderer (or a busy Quest) needs the slack; returns the moment the reply lands
 	host.add_child(http)
 	if http.request(base + "/atlas/status") != OK:
 		http.queue_free()

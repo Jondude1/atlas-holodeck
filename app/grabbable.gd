@@ -69,10 +69,14 @@ func begin_grab(hand: Node3D) -> void:
 		return
 	_hands.append(hand)
 	_recapture()
+	if hand.has_method("buzz"):
+		hand.buzz(0.03, 0.5)  # R2-1: grab confirmed in the grabbing hand
 
 func end_grab(hand: Node3D) -> void:
 	_hands.erase(hand)
 	_recapture()
+	if hand.has_method("buzz"):
+		hand.buzz(0.02, 0.3)  # R2-1: soft release tick (settle / coast / stay)
 
 func _recapture() -> void:
 	if _hands.size() == 1:

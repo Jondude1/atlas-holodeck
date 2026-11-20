@@ -23,9 +23,12 @@ theme/custom_font="res://fonts/Rajdhani-Medium.ttf"
 
 renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=2
 
 [xr]
 
 openxr/enabled=true
 openxr/reference_space=1
+openxr/display_refresh_rate=90.0
+openxr/foveation_level=2
 shaders/enabled=true

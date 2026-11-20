@@ -492,3 +492,44 @@ when I install it and put it on"):**
   Jon's first in-headset session.
 - Whether the CAD job rides Hermes delegation or a dedicated hub endpoint — the hub
   lane decides during voice-link work; the app's contract is "POST a job, get a .glb".
+
+### Round 2 additions (brief #17, 2026-11-20 — Helios takeover build)
+
+Built by Helios directly under Jon's Claude-limit takeover order (the
+Claude session limit stalled the run; resets 12:40 ET). Same gates.
+
+- **Render settings (R2-10).** project.godot: MSAA 2x, OpenXR display
+  refresh request 90 Hz, foveation level 2. On-device effect is
+  headset-verifiable only; headless frame baseline comes from
+  tools/perf_probe.gd draw-call counts.
+- **CAD stage narration (R2-7).** The bench status now reads the hub
+  job's real stage — QUEUED / WRITING / REPAIRING / BUILDING /
+  FETCHING / SAVING — with elapsed seconds, instead of one blanket
+  BUILDING for the whole wait.
+- **Real brain tier (R2-11).** /atlas/voice-status reports the hub's
+  configured chat model + locality (brain_model, brain_local). The HUD
+  BRAIN line shows it (e.g. "LOCAL · ATLAS:14B"), "HUB" when the tier
+  fetch fails, "OFFLINE" when no hub answers. Replaces the blanket
+  "HERMES" label, which claimed a tier the app could not know.
+- **Skippable boot (R2-8).** Any controller button press (or a desktop
+  key) during the ring sequence jumps to the normal completion path;
+  the greeting and materialize still happen. A guard prevents the
+  completion running twice.
+- **Haptics (R2-1).** Short pulses on grab, release, bench select,
+  panel poke, and materialize-complete. No-ops unless XR is live.
+- **Easing (R2-3).** app/ease.gd is the one easing language (cubic-out
+  for motion, sine-in-out for fades); the previously linear fades use
+  it. Designed exceptions (panel pop, boot fill) are documented there.
+- **Hover (R2-2).** A parked model under the ray now glows as one
+  whole selectable object; active-model per-part hover is unchanged.
+- **Hub greeting (R2-9).** When the hub answers the boot probe, the
+  greeting is spoken by the hub's voice with the time of day; the
+  recorded clips are the offline fallback.
+- **Panel rendering (R2-6).** Idle panel viewport is DISABLED between
+  a 5 s safety pulse (was: full re-render every 0.5 s). All content
+  changes funnel through poke(); expiry draws one final frame.
+- **Spawn/boot hitch (R2-4/R2-5).** The silhouette texture paint
+  (~0.35-0.45 s) no longer runs inside the model's _ready; it is
+  deferred a frame and materialize's schematic fade waits for it.
+  The paint still costs what it costs — it no longer stacks onto the
+  spawn/boot frame.

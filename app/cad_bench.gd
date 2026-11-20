@@ -49,9 +49,20 @@ func setup(table: Node3D, first_model: Node3D, panel: Node3D, hud: Node, voice: 
 func _log(msg: String) -> void:
 	print("[CAD] t+%dms %s" % [Time.get_ticks_msec(), msg])
 
+## Round 2 (R2-7): the hub job carries a real stage — narrate it instead
+## of one blanket BUILDING for the whole wait.
+const STAGE_LABELS := {
+	"queued": "QUEUED", "writing": "WRITING", "repairing": "REPAIRING",
+	"building": "BUILDING", "fetching": "FETCHING", "saving": "SAVING",
+}
+
+func _stage_status(stage: String) -> String:
+	var label: String = STAGE_LABELS.get(stage, "BUILDING")
+	return "%s %d s" % [label, int(Time.get_ticks_msec() / 1000.0 - _t_job)]
+
 func _on_job(job_id: String, _ack: String) -> void:
 	_t_job = Time.get_ticks_msec() / 1000.0
-	status = "BUILDING 0 s"
+	status = "QUEUED 0 s"
 	_log("job %s accepted - following it" % job_id)
 	_poll(job_id)
 
@@ -83,10 +94,11 @@ func _poll(job_id: String) -> void:
 	var t_end := Time.get_ticks_msec() / 1000.0 + POLL_MAX_SECONDS
 	while Time.get_ticks_msec() / 1000.0 < t_end and not _handled.has(job_id):
 		await get_tree().create_timer(POLL_SECONDS).timeout
-		status = "BUILDING %d s" % int(Time.get_ticks_msec() / 1000.0 - _t_job)
 		if _handled.has(job_id):
 			return
 		var info := await _get_json("/atlas/cad-job/%s" % job_id)
+		if not info.is_empty():
+			status = _stage_status(String(info.get("stage", "")))
 		match String(info.get("status", "")):
 			"done":
 				_on_done(job_id)
@@ -129,6 +141,9 @@ func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job 
 	m.labels_beat.connect(_on_labels_beat.bind(m), CONNECT_ONE_SHOT)
 	await m.materialize()
 	_log("materialize complete")
+	for h in get_tree().get_nodes_in_group("holodeck_hands"):
+		if h.has_method("buzz"):
+			h.buzz(0.06, 0.3)  # R2-1: materialize-complete pulse, both hands
 	spawned.emit(m)
 	await _voice.say("Take a look. You can grab it, or pull it apart from the panel. Nothing goes to the printer without your confirmation.")
 	status = ""
@@ -220,8 +235,8 @@ func bench() -> Array[Node3D]:
 
 func _on_labels_beat(m: Node3D) -> void:
 	var tw := create_tween().set_parallel(true)
-	tw.tween_method(_table.set_readout_alpha, 0.0, 1.0, 0.2)
-	tw.tween_method(m.set_tether_alpha, 0.0, 1.0, 0.3)
+	Ease.fd(tw.tween_method(_table.set_readout_alpha, 0.0, 1.0, 0.2))
+	Ease.fd(tw.tween_method(m.set_tether_alpha, 0.0, 1.0, 0.3))
 
 func _park_active() -> void:
 	if _active == null or _active.call("is_parked"):

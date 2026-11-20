@@ -231,12 +231,15 @@ func _on_part_toggled(on: bool, i: int) -> void:
 		_model.clear_highlight()
 
 ## The panel is static most of the time, so its SubViewport renders only while something is happening (pointer input,
-## voice state, list/model change = poke) plus one refresh every PANEL_IDLE_REFRESH s so nothing can go stale. Its 2D
-## draws were ~34 of the frame's draw calls when it re-rendered every frame (brief #15 budget).
-const PANEL_IDLE_REFRESH := 0.5
+## voice state, list/model change = poke). Round 2 (R2-6): at idle the viewport is now fully DISABLED (Godot 4 has
+## no when-dirty mode for SubViewport) — every content change funnels through poke() (the text setters compare
+## before setting), expiry draws one final ONCE frame, and a slow 5 s safety pulse covers anything un-poked.
+## Before R2-6, idle forced a full re-render every 0.5 s (~34 draw calls each, forever).
+const PANEL_SAFETY_REFRESH := 5.0
 const PANEL_POKE_S := 1.2
 var _poke_t := PANEL_POKE_S
 var _idle_t := 0.0
+var _safety_flip := false
 
 func poke(seconds := PANEL_POKE_S) -> void:
 	_poke_t = maxf(_poke_t, seconds)
@@ -247,17 +250,22 @@ func _process(delta: float) -> void:
 		if t != _card_hint.text:
 			_card_hint.text = t
 			poke()
+	if _safety_flip:
+		_safety_flip = false
+		_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	if _poke_t > 0.0:
 		_poke_t -= delta
 		_idle_t = 0.0
 		_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	else:
 		_idle_t += delta
-		if _idle_t >= PANEL_IDLE_REFRESH:
+		if _vp.render_target_update_mode == SubViewport.UPDATE_ALWAYS:
+			_vp.render_target_update_mode = SubViewport.UPDATE_ONCE  # one final clean frame, then off
+			_safety_flip = true
+		elif _idle_t >= PANEL_SAFETY_REFRESH:
 			_idle_t = 0.0
 			_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
-		elif _vp.render_target_update_mode == SubViewport.UPDATE_ALWAYS:
-			_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+			_safety_flip = true
 	_scale_t += delta
 	if _scale_t > 0.25 and _parts_header and _model:
 		_scale_t = 0.0
@@ -370,7 +378,7 @@ func _on_button_pressed(b: Button) -> void:
 	b.modulate = Tokens.HOLO_CORE
 	b.scale = Vector2.ONE * 0.94
 	var tw := b.create_tween().set_parallel(true)
-	tw.tween_property(b, "modulate", Color.WHITE, 0.25)
+	Ease.fd(tw.tween_property(b, "modulate", Color.WHITE, 0.25))
 	tw.tween_property(b, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 ## World ray -> Vector3(pixel_x, pixel_y, distance), or null if it misses the panel.
