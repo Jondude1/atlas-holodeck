@@ -4,8 +4,10 @@ extends Node3D
 ## canvas-generated panel/shelving textures, a ceiling with beams and one cyan cove strip,
 ## recessed cyan accents, a contact shadow + glow pool under the table, and drifting dust.
 ## Procedural only: every texture is drawn here, every colour comes from Tokens.
-## Cost: ~22 draw calls at rest (floor, 2 pool decals, 4 walls, ceiling, 4 beams, cove + halo,
-## 6 accent strips, dust).
+## Brief #12 adds the Stark-lab dressing (lab.gd): workbenches, shelving + equipment, wall greebles, animated screens, a
+## ceiling light rig with shafts, floor trim + gloss streaks. The beams, accent strips and cove are merged into the lab's
+## meshes (they used to be 11 separate draw calls).
+## Cost: ~15 draw calls at rest (floor, pool + 2 shadow decals, 4 walls, ceiling, cove halo, dust) + the lab's 5.
 
 const HALF_X := 4.0
 const Z_BACK := -5.0
@@ -14,8 +16,8 @@ const HEIGHT := 3.4
 const PPM := 128               # wall texture pixels per metre
 const STRIP_ENERGY := 1.3
 const COVE_ENERGY := 1.4
-const POOL_ALPHA := 0.4
-const SHADOW_ALPHA := 0.7
+const POOL_ALPHA := 0.55
+const SHADOW_ALPHA := 0.85
 const HALO_ALPHA := 0.22
 
 var _wall_mats: Array[StandardMaterial3D] = []
@@ -26,18 +28,25 @@ var _strip_energy: Array[float] = []
 var _glow_mats: Array[StandardMaterial3D] = []  # additive decals: alpha scaled by fade
 var _glow_alpha: Array[float] = []
 var _dust: GPUParticles3D
+var _lab: Lab
 var _fade := 1.0
 
 ## Table footprint centre on the floor (main.tscn places the table at z = -1.55).
 func build(table_xz: Vector2) -> void:
+	_lab = Lab.new()
+	_lab.name = "Lab"
+	add_child(_lab)                       # owns the merged lit / emissive builders the room adds its trim to
 	_build_floor(table_xz)
 	_build_walls()
 	_build_ceiling()
+	_lab.build(table_xz)                  # dressing + seals every merged mesh
 	_build_dust()
 	set_fade(1.0)
 
 func set_fade(v: float) -> void:
 	_fade = v
+	if _lab:
+		_lab.set_fade(v)
 	for m in _wall_mats:
 		m.albedo_color = Color(v, v, v)
 	for i in _lit_mats.size():
@@ -107,8 +116,9 @@ func _box(size: Vector3) -> BoxMesh:
 func _build_floor(table_xz: Vector2) -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(HALF_X * 2.0, Z_FRONT - Z_BACK)
-	var base := Tokens.TITANIUM_DARK.lerp(Tokens.ROOM_BG, 0.35) * 1.5
-	var mat := _lit(Color(base.r, base.g, base.b), 0.7, 0.34, _floor_texture())
+	# the texture carries the tone (dark blue-rich plate, seams + scuffs); the tint stays near white so the two don't
+	# multiply into black (brief #12: darker and richer than #8, never black)
+	var mat := _lit(Color(0.85, 0.92, 1.0), 0.6, 0.22, _floor_texture())           # glossy: the rig and table light streak across it
 	mat.uv1_scale = Vector3(HALF_X * 2.0, Z_FRONT - Z_BACK, 1.0)
 	_mesh("Floor", plane, mat, Vector3(0, 0, (Z_FRONT + Z_BACK) * 0.5))
 
@@ -125,12 +135,20 @@ func _build_floor(table_xz: Vector2) -> void:
 	shadow_mat.render_priority = 1
 	_mesh("ContactShadow", _quad(Vector2(2.7, 1.5)), shadow_mat,
 			Vector3(table_xz.x, 0.006, table_xz.y), Vector3(-90, 0, 0))
+	# tight dark core right under the slab (contact shading): the table reads as standing ON the floor, not hovering
+	var core_mat := StandardMaterial3D.new()
+	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	core_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	core_mat.albedo_texture = Fx.radial_texture(96, 0.45)
+	core_mat.albedo_color = Tokens.a(Tokens.ROOM_BG, 0.9)
+	core_mat.render_priority = 2
+	_mesh("ContactCore", _quad(Vector2(2.35, 1.0)), core_mat, Vector3(table_xz.x, 0.0075, table_xz.y), Vector3(-90, 0, 0))
 
 ## 1 m tile: dark plate, directional scuffs, bevelled seams.
 func _floor_texture() -> ImageTexture:
 	var n := 256
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
-	var base := Tokens.ROOM_BG.lerp(Tokens.GRID_MINOR, 0.12)
+	var base := Tokens.ROOM_BG.lerp(Tokens.HOLO_DEEP, 0.5)
 	img.fill(base)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 88
@@ -158,7 +176,7 @@ func _build_walls() -> void:
 	var y := HEIGHT * 0.5
 	# accent strip positions in wall-texture pixels (x), matching the strip boxes placed below
 	var back_px: Array[int] = []
-	for wx in [-3.0, -1.0, 1.0, 3.0]:
+	for wx in [-1.0, 1.0]:                # the shelving units own the outer bays now
 		back_px.append(int((wx + HALF_X) * PPM))
 	var left_z := -3.2
 	var right_z := -3.2
@@ -170,11 +188,14 @@ func _build_walls() -> void:
 	_mesh("WallLeft", _quad(side), _unshaded_tex(_wall_texture(true, 37, left_px)), Vector3(-HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, 90, 0))
 	_mesh("WallRight", _quad(side), _unshaded_tex(_wall_texture(true, 41, right_px)), Vector3(HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, -90, 0))
 
-	var strip_mesh := _box(Vector3(0.03, 1.2, 0.03))
-	for wx in [-3.0, -1.0, 1.0, 3.0]:
-		_mesh("AccentBack", strip_mesh, _strip(STRIP_ENERGY), Vector3(wx, 1.5, Z_BACK + 0.016))
-	_mesh("AccentLeft", strip_mesh, _strip(STRIP_ENERGY), Vector3(-HALF_X + 0.016, 1.5, left_z))
-	_mesh("AccentRight", strip_mesh, _strip(STRIP_ENERGY), Vector3(HALF_X - 0.016, 1.5, right_z))
+	for wx in [-1.0, 1.0]:                # accent strips: merged into the lab's emissive mesh (STRIP_ENERGY of E_BASE)
+		_lab_strip(Vector3(wx, 1.5, Z_BACK + 0.016), Vector3(0.03, 1.2, 0.03))
+	_lab_strip(Vector3(-HALF_X + 0.016, 1.5, left_z), Vector3(0.03, 1.2, 0.03))
+	_lab_strip(Vector3(HALF_X - 0.016, 1.5, right_z), Vector3(0.03, 1.2, 0.03))
+
+func _lab_strip(c: Vector3, size: Vector3, energy := STRIP_ENERGY) -> void:
+	var k := energy / Lab.E_BASE
+	_lab.emi.add_box(c, size, Color(Tokens.HOLO_LINE.r * k, Tokens.HOLO_LINE.g * k, Tokens.HOLO_LINE.b * k))
 
 ## Wall plane texture: panel seams, recessed bays, optionally shelving silhouettes, accent halos.
 func _wall_texture(shelves: bool, seed_v: int, strip_px: Array[int]) -> ImageTexture:
@@ -276,11 +297,10 @@ func _build_ceiling() -> void:
 	ceil_mat.albedo_texture = ImageTexture.create_from_image(tex_img)
 	_mesh("Ceiling", _quad(Vector2(HALF_X * 2.0, Z_FRONT - Z_BACK)), ceil_mat,
 			Vector3(0, HEIGHT, (Z_FRONT + Z_BACK) * 0.5), Vector3(90, 0, 0))
-	var beam_mat := _lit(Tokens.TITANIUM_DARK, 0.6, 0.5)
 	for z in [-4.0, -2.4, -0.8, 0.8, 2.4]:
-		_mesh("Beam", _box(Vector3(HALF_X * 2.0, 0.2, 0.24)), beam_mat, Vector3(0, HEIGHT - 0.1, z))
+		_lab.lit.add_box(Vector3(0, HEIGHT - 0.1, z), Vector3(HALF_X * 2.0, 0.2, 0.24), Tokens.TITANIUM_DARK)
 	# cove: one soft cyan strip where the back wall meets the ceiling, with a halo wash on the wall
-	_mesh("Cove", _box(Vector3(HALF_X * 1.85, 0.04, 0.05)), _strip(COVE_ENERGY), Vector3(0, HEIGHT - 0.28, Z_BACK + 0.04))
+	_lab_strip(Vector3(0, HEIGHT - 0.28, Z_BACK + 0.04), Vector3(HALF_X * 1.85, 0.04, 0.05), COVE_ENERGY)
 	var wash_tex := Fx.radial_texture(128, 1.4)
 	_mesh("CoveHalo", _quad(Vector2(HALF_X * 2.0, 1.1)), _glow(Tokens.HOLO_LINE, wash_tex, HALO_ALPHA),
 			Vector3(0, HEIGHT - 0.55, Z_BACK + 0.01))
@@ -313,7 +333,7 @@ func _build_dust() -> void:
 	quad.material = mat
 	_dust = GPUParticles3D.new()
 	_dust.name = "Dust"
-	_dust.amount = 90
+	_dust.amount = 240
 	_dust.lifetime = 14.0
 	_dust.preprocess = 8.0
 	_dust.emitting = false

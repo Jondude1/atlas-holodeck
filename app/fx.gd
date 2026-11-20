@@ -23,6 +23,20 @@ static func grid_material(base: Color, minor_step: float, major_step: float) -> 
 	m.set_shader_parameter("major_strength", Tokens.GRID_MINOR_ALPHA * 2.0)
 	m.set_shader_parameter("minor_spacing", minor_step)
 	m.set_shader_parameter("major_spacing", major_step)
+	m.set_shader_parameter("minor_strength", 0.5)    # brief #12: crisper schematic layer (was GRID_MINOR_ALPHA)
+	m.set_shader_parameter("major_strength", 0.95)
+	m.set_shader_parameter("fine_strength", 0.2)
+	return m
+
+## Light strip with a pulse travelling along `axis` (see pulse.gdshader). HDR energy as Fx.emissive.
+static func pulse_material(c: Color, energy: float, axis := Vector3.RIGHT, span := 2.24, phase := 0.0) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://pulse.gdshader")
+	m.set_shader_parameter("base_color", c)
+	m.set_shader_parameter("energy", energy)
+	m.set_shader_parameter("axis", axis)
+	m.set_shader_parameter("span", span)
+	m.set_shader_parameter("phase", phase)
 	return m
 
 static func part_material(aabb: AABB) -> ShaderMaterial:
@@ -36,6 +50,17 @@ static func part_material(aabb: AABB) -> ShaderMaterial:
 	m.set_shader_parameter("aabb_half", aabb.size * 0.5)
 	return m
 
+## Real-mesh hologram (fresnel rim + volume fill, promoted from the parked trebuchet work): same uniforms as
+## part_material, so a runtime CAD model materializes with the identical scan/flash/wire language.
+static func mesh_part_material() -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://holo_mesh.gdshader")
+	m.set_shader_parameter("fill_color", Tokens.HOLO_PRIMARY)
+	m.set_shader_parameter("line_color", Tokens.HOLO_LINE)
+	m.set_shader_parameter("core_color", Tokens.HOLO_CORE)
+	m.set_shader_parameter("fill_alpha", Tokens.VOLUME_ALPHA)
+	return m
+
 static func additive_unshaded(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -46,30 +71,80 @@ static func additive_unshaded(c: Color) -> StandardMaterial3D:
 	return m
 
 static var _brushed: ImageTexture
+static var _brushed_n: ImageTexture
 
-## Brushed-metal grain: fine streaks along the face's U axis, mean ~0.85 so albedo_color keeps its tone.
+## Brushed-metal grain (brief #12: clearer at working distance). Streaks run along the face's U axis: per-row
+## brightness bands (some bright machining lines), fine noise, and a few long light scratches. Mean ~0.84 so
+## albedo_color keeps its tone. The same height field feeds brushed_normal().
+static var _grain_h := PackedFloat32Array()
+const GRAIN_N := 256
+
+static func _grain() -> void:
+	if not _grain_h.is_empty():
+		return
+	var n := GRAIN_N
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1621
+	_grain_h.resize(n * n)
+	for y in n:
+		var v := 0.8 + rng.randf_range(-0.16, 0.14)
+		if rng.randf() < 0.07:
+			v += 0.12                                  # a bright machining line
+		for x in n:
+			_grain_h[y * n + x] = clampf(v + rng.randf_range(-0.045, 0.045), 0.0, 1.0)
+	for k in 14:                                       # long fine scratches, slightly off-axis
+		var y0 := rng.randf() * n
+		var slope := rng.randf_range(-0.03, 0.03)
+		var x_start := rng.randi() % n
+		var len := rng.randi_range(n / 3, n)
+		for dx in len:
+			var x := (x_start + dx) % n
+			var y := int(y0 + slope * dx) % n
+			_grain_h[y * n + x] = clampf(_grain_h[y * n + x] + 0.16, 0.0, 1.0)
+
 static func brushed_texture() -> ImageTexture:
 	if _brushed:
 		return _brushed
-	var n := 256
+	_grain()
+	var n := GRAIN_N
 	var img := Image.create(n, n, false, Image.FORMAT_L8)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 1621
 	for y in n:
-		var v := 0.82 + rng.randf_range(-0.12, 0.1)
 		for x in n:
-			var w := clampf(v + rng.randf_range(-0.035, 0.035), 0.0, 1.0)
+			var w := _grain_h[y * n + x]
 			img.set_pixel(x, y, Color(w, w, w))
 	img.generate_mipmaps()
 	_brushed = ImageTexture.create_from_image(img)
 	return _brushed
 
+## Normal map from the grain height field: the streaks tilt the surface across the brushing direction, which is what
+## makes the light catch in lines on the slab edge and top (anisotropic look without an anisotropic shader).
+static func brushed_normal() -> ImageTexture:
+	if _brushed_n:
+		return _brushed_n
+	_grain()
+	var n := GRAIN_N
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	for y in n:
+		var yp := (y + 1) % n
+		var ym := (y + n - 1) % n
+		for x in n:
+			var dx := _grain_h[y * n + (x + 1) % n] - _grain_h[y * n + (x + n - 1) % n]
+			var dy := _grain_h[yp * n + x] - _grain_h[ym * n + x]
+			var nv := Vector3(-dx * 0.6, -dy * 2.4, 1.0).normalized()
+			img.set_pixel(x, y, Color(nv.x * 0.5 + 0.5, nv.y * 0.5 + 0.5, nv.z * 0.5 + 0.5))
+	img.generate_mipmaps()
+	_brushed_n = ImageTexture.create_from_image(img)
+	return _brushed_n
+
 static func titanium(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c
 	m.albedo_texture = brushed_texture()
-	m.metallic = 0.9
-	m.roughness = 0.3
+	m.normal_enabled = true
+	m.normal_texture = brushed_normal()
+	m.normal_scale = 0.8
+	m.metallic = 0.92
+	m.roughness = 0.27
 	return m
 
 ## Soft radial sprite (white centre -> transparent edge): glow pools, halos.

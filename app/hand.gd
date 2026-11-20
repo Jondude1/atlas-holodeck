@@ -8,6 +8,9 @@ extends XRController3D
 
 var _held: Node = null
 var _pressing := false
+var _ptt_held := false
+var _menu_down_ms := -1
+const RESET_HOLD_MS := 800
 var _last := Vector2.ZERO
 @onready var _laser: Node3D = get_node_or_null("Laser")
 
@@ -19,29 +22,67 @@ func _ready() -> void:
 
 func _on_pressed(action: String) -> void:
 	if action == "grip_click" and _held == null:
-		var m := get_tree().get_first_node_in_group("grabbable")
-		if m and m.can_grab(self):
+		var m := _nearest_grabbable()
+		if m:
 			_held = m
 			m.begin_grab(self)
+	elif action == "menu_button":
+		_menu_down_ms = Time.get_ticks_msec()
+	elif action == "trigger_click" and not pointer:
+		# push-to-talk, primary controller hold: the LEFT trigger. Conflict-free: the left hand has no pointer role, grip = grab,
+		# menu long-press = RESET FLOOR, and the right trigger stays the UI click. Works regardless of where anything is aimed.
+		var vl := get_tree().get_first_node_in_group("voice") as VoiceLink
+		if vl:
+			_ptt_held = true
+			vl.ptt_begin()
 	elif action == "trigger_click" and pointer:
 		var hit = _hit()
 		if hit != null:
 			_pressing = true
 			_send_button(Vector2(hit.x, hit.y), true)
+		else:
+			# secondary PTT: the right trigger when aimed off the panel (on the panel it clicks UI)
+			var v := get_tree().get_first_node_in_group("voice") as VoiceLink
+			if v:
+				_ptt_held = true
+				v.ptt_begin()
 
 func _on_released(action: String) -> void:
+	if action == "menu_button":
+		_menu_down_ms = -1
 	if action == "grip_click" and _held:
 		_held.end_grab(self)
 		_held = null
 	elif action == "trigger_click" and _pressing:
 		_pressing = false
 		_send_button(_last, false)
+	elif action == "trigger_click" and _ptt_held:
+		_ptt_held = false
+		var v := get_tree().get_first_node_in_group("voice") as VoiceLink
+		if v:
+			v.ptt_end()
+
+## With several models on the bench, the grip takes the nearest one within reach (not just the first in the tree).
+func _nearest_grabbable() -> Node:
+	var best: Node = null
+	var best_d := INF
+	for m in get_tree().get_nodes_in_group("grabbable"):
+		if m.can_grab(self):
+			var d: float = global_position.distance_to(m.global_transform * m.center_local)
+			if d < best_d:
+				best_d = d
+				best = m
+	return best
 
 func _hit() -> Variant:
 	var panel := get_tree().get_first_node_in_group("ui_panel")
 	return panel.pick(global_position, -global_basis.z) if panel else null
 
 func _process(_delta: float) -> void:
+	# long-press (~0.8 s) of the left menu button = RESET FLOOR (fires once per hold)
+	if _menu_down_ms >= 0 and Time.get_ticks_msec() - _menu_down_ms >= RESET_HOLD_MS:
+		_menu_down_ms = -1
+		XrBoot.reset_floor("menu long-press")
 	if not pointer:
 		return
 	var hit = _hit()

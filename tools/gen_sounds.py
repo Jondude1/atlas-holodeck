@@ -32,3 +32,7 @@ sweep = tone(300, 1.8, 0.18, attack=0.3, decay=2.5, freq_end=900)
 fifth = [0] * int(RATE * 0.9) + tone(660, 0.9, 0.2, attack=0.02, decay=3) 
 fifth2 = [0] * int(RATE * 0.9) + tone(990, 0.9, 0.12, attack=0.02, decay=3)
 write("boot.wav", mix(sweep, fifth, fifth2))
+
+# voice earcons (brief #11): wake = short rising pair (listening opened), end = falling pair (utterance closed)
+write("wake.wav", tone(660, 0.09, 0.5, decay=3) + tone(990, 0.13, 0.5, decay=4))
+write("end.wav", tone(990, 0.09, 0.45, decay=3) + tone(560, 0.14, 0.45, decay=4))

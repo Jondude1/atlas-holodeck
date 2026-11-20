@@ -16,6 +16,10 @@ const DIM_LABEL_GAP := 0.06    # metres past the footprint edge: just outside th
 
 signal explode_changed(t: float)
 var explode_value := 0.0
+## Parts of a voice-CAD model are scaled up to a table-readable size at load (a 3 in part is 7.6 cm); this is that
+## factor, so every displayed size (dimension labels, DIMS) is divided back to true inches. 1.0 = shown at true scale.
+var display_scale := 1.0
+var _parked := false
 
 var _parts: Array[MeshInstance3D] = []
 var _home := {}  # part -> home position
@@ -47,7 +51,7 @@ func _ready() -> void:
 		_dir[p] = d.normalized() if d.length() > 0.001 else Vector3.UP
 		var box: AABB = Transform3D(p.basis, p.position) * p.mesh.get_aabb()
 		_bounds = box if i == 0 else _bounds.merge(box)
-		var mat := Fx.part_material(p.mesh.get_aabb())
+		var mat := _make_material(p)
 		_mats.append(mat)
 		p.material_override = mat
 	_build_schematic()
@@ -55,6 +59,11 @@ func _ready() -> void:
 	_build_scan_plane()
 	_build_tethers()
 	hide_all()
+
+## Material hook: the hand-built bracket uses the AABB-edge shader; runtime CAD meshes override this with the
+## fresnel mesh hologram (cad_model.gd).
+func _make_material(p: MeshInstance3D) -> ShaderMaterial:
+	return Fx.part_material(p.mesh.get_aabb())
 
 func part_names() -> PackedStringArray:
 	var names := PackedStringArray()
@@ -66,7 +75,7 @@ func part_names() -> PackedStringArray:
 ## depth, height). A dimension >= 24 in reads as feet + inches (F' R.R"); the IN suffix only
 ## appears when every dimension is plain inches. Metric never reaches the display.
 func dims_text() -> String:
-	var s := _bounds.size
+	var s := _bounds.size / display_scale
 	var inches := [s.x / 0.0254, s.z / 0.0254, s.y / 0.0254]
 	var long_form := inches.any(func(v): return v >= 24.0)
 	var parts := PackedStringArray()
@@ -97,6 +106,25 @@ func set_explode(t: float) -> void:
 	for p in _parts:
 		p.position = _home[p] + _dir[p] * t * EXPLODE_DISTANCE
 	_update_tethers()
+
+## Multi-object bench (SPEC §2): a design that is no longer the active one rests small at the table's edge,
+## its labels and dimension lines off. `to` is in the table's space.
+func park(to: Vector3, s := 0.55) -> void:
+	_parked = true
+	set_explode(0.0)
+	set_tether_alpha(0.0)
+	for l in _dim_labels:
+		l.visible = false
+	for t in _tethers:                 # hidden outright: a transparent label/line still costs a draw call
+		t["label"].visible = false
+		t["line"].visible = false
+	_schematic.visible = false
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(self, "position", to, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "scale", Vector3.ONE * s, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+func is_parked() -> bool:
+	return _parked
 
 func set_model_scale(s: float) -> void:
 	scale = Vector3.ONE * s
@@ -130,7 +158,7 @@ func _build_schematic() -> void:
 ## Flat X / Z size labels just outside the blueprint's dimension lines.
 func _build_dim_labels() -> void:
 	var c := _bounds.get_center()
-	var s := _bounds.size
+	var s := _bounds.size / display_scale
 	var specs := [
 		[s.x, Vector3(c.x, SCHEMATIC_LIFT, _bounds.end.z + DIM_LABEL_GAP), 0.0],
 		[s.z, Vector3(_bounds.end.x + DIM_LABEL_GAP, SCHEMATIC_LIFT, c.z), 90.0],

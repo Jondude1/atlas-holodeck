@@ -1,0 +1,22 @@
+{
+  "name": "Shelf Bracket",
+  "units": "in",
+  "true_dims_in": [
+    4.0,
+    1.25,
+    4.0
+  ],
+  "dims_note": "overall bounding box X length x Y depth x Z height, decimal inches",
+  "frame": "CAD Z-up, model sits on z=0 centred on x=y=0; GLB nodes are glTF Y-up metres (x, y, z)cad -> (x, z, -y)",
+  "parts": [
+    {
+      "name": "Bracket",
+      "dims_in": [
+        4.0,
+        1.25,
+        4.0
+      ]
+    }
+  ],
+  "checks": "is_valid, single solid, volume>0, watertight mesh, min wall >= 0.8 mm, no unexplained interference: PASSED"
+}

@@ -15,8 +15,10 @@ const ARC_DEG_PER_SEC := 2.5
 const ARC_ALPHA := 0.55
 const GAUGE_SIZE := 0.5
 const GAUGE_ALPHA := 0.95
-const CARD_SIZE := Vector2(0.4, 0.25)
-const CARD_DROP := 0.4      # metres below the Atlas panel's centre
+const CARD_SIZE := Vector2(0.4, 0.34)
+const CARD_DROP := 0.5      # metres below the Atlas panel's centre (the panel is 0.6 m tall with the voice row)
+const MIC_POS := Vector3(0.0, -0.19, 0.0)   # voice indicator sits just under the status strip
+const SUBTITLE_POS := Vector3(0.0, -0.33, 0.0)
 const TEXT_PX := 0.0009
 
 const ARC_SHADER := """
@@ -90,6 +92,12 @@ var _arc_mats: Array[ShaderMaterial] = []
 var _arcs: Array[MeshInstance3D] = []
 var _frame_mats: Array[StandardMaterial3D] = []
 var _labels: Array[Label3D] = []
+var _voice: VoiceLink
+var _mic_orb: MeshInstance3D
+var _mic_orb_mat: StandardMaterial3D
+var _mic_label: Label3D
+var _subtitle: Label3D
+var _subtitle_hold := 0.0
 var _last_second := -1
 var _last_link := "~unset"
 
@@ -100,10 +108,26 @@ func build(model: Node, table: Node) -> void:
 	_build_arcs()
 	_build_gauge()
 	_build_card()
+	_build_mic()
 	_model.explode_changed.connect(_on_explode)
 	_on_explode(0.0)
 	_refresh_text()
 	set_fade(1.0)
+
+## The assembly on show changed (a voice-CAD model arrived): gauge, PARTS and DIMS follow it.
+func set_model(m: Node) -> void:
+	if _model and _model.explode_changed.is_connected(_on_explode):
+		_model.explode_changed.disconnect(_on_explode)
+	_model = m
+	_model.explode_changed.connect(_on_explode)
+	_on_explode(m.explode_value)
+	_refresh_text()
+
+func bind_voice(v: VoiceLink) -> void:
+	_voice = v
+	v.state_changed.connect(func(_s: int) -> void: _refresh_text())
+	v.heard.connect(func(_t: String) -> void: _subtitle_hold = 0.0)
+	_refresh_text()
 
 func set_fade(v: float) -> void:
 	_fade = v
@@ -115,10 +139,13 @@ func set_fade(v: float) -> void:
 		m.albedo_color = Color(1, 1, 1, v)
 	for l in _labels:
 		l.modulate.a = v
+	if _mic_orb_mat:
+		_mic_orb_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, 0.0)
 
 func _process(delta: float) -> void:
 	for a in _arcs:
 		a.rotate_object_local(Vector3.FORWARD, deg_to_rad(ARC_DEG_PER_SEC) * delta * a.get_meta("dir"))
+	_animate_mic(delta)
 	var sec := int(Time.get_unix_time_from_system())
 	if sec != _last_second or Hub.link != _last_link:
 		_last_second = sec
@@ -128,14 +155,76 @@ func _process(delta: float) -> void:
 func _refresh_text() -> void:
 	_clock.text = "HOLODECK • LIVE • %s" % Time.get_time_string_from_system()
 	_link.text = "LINK — %s" % (Hub.link if Hub.link != "" else "CHECKING")
-	_card_text.text = "LINK    %s\nBRAIN   %s\nPARTS   %d\nDIMS    %s" % [
+	var text := "LINK    %s\nBRAIN   %s\nPARTS   %d\nDIMS    %s" % [
 		Hub.link if Hub.link != "" else "CHECKING",
 		Hub.brain if Hub.brain != "" else "CHECKING",
 		_model.part_names().size(), _model.dims_text()]
+	if _voice:
+		text += "\nVOICE   %s" % _voice.state_text()
+	if CadBench.status != "":
+		text += "\nCAD     %s" % CadBench.status
+	_card_text.text = text
 
 func _on_explode(t: float) -> void:
 	_gauge_mat.set_shader_parameter("value", t)
 	_gauge_pct.text = "%d%%" % roundi(t * 100.0)
+
+# ---------------------------------------------------------------- voice indicator
+
+## Persistent mic indicator (Atlas rule: no ambiguity about whether the mic is hot). An orb + words under the strip:
+## MIC LIVE (steady cyan glow) / LISTENING (bright core, fast pulse driven by the real input level) / THINKING /
+## SPEAKING / MIC OFF (dark). Plus a subtitle line with the last thing heard or said.
+func _build_mic() -> void:
+	_mic_orb_mat = Fx.glow_decal(Tokens.a(Tokens.HOLO_LINE, 0.0), Fx.radial_texture(64, 1.2))
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * 0.2
+	_mic_orb = MeshInstance3D.new()
+	_mic_orb.name = "MicOrb"
+	_mic_orb.mesh = q
+	_mic_orb.material_override = _mic_orb_mat
+	_mic_orb.position = STRIP_POS + MIC_POS + Vector3(-0.17, 0.0, 0.004)
+	add_child(_mic_orb)
+	_mic_label = _label("MIC OFF", 56, Tokens.GRID_MINOR, STRIP_POS + MIC_POS + Vector3(-0.07, 0.0, 0.004))
+	_mic_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_subtitle = _label("", 40, Tokens.HOLO_LINE, STRIP_POS + SUBTITLE_POS + Vector3(0, 0, 0.004))
+	_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_subtitle.width = 1300.0
+
+func _animate_mic(delta: float) -> void:
+	if _voice == null or _mic_orb_mat == null:
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var alpha := 0.1
+	var scl := 0.7
+	var col := Tokens.GRID_MINOR
+	match _voice.state:
+		VoiceLink.S.ARMED:
+			col = Tokens.HOLO_LINE
+			if _voice.wake_enabled:
+				alpha = 0.55 + 0.1 * sin(t * 2.0)
+				scl = 0.8 + 0.5 * _voice.mic_level
+			else:
+				alpha = 0.18                    # PTT-only: the mic is OFF, the orb is a dim "hold to talk" marker
+				scl = 0.7
+		VoiceLink.S.LISTENING:
+			col = Tokens.HOLO_CORE
+			alpha = 1.0
+			scl = 1.15 + 0.2 * sin(t * 9.0) + 0.6 * _voice.mic_level
+		VoiceLink.S.THINKING:
+			col = Tokens.HOLO_PRIMARY
+			alpha = 0.5 + 0.3 * sin(t * 5.0)
+			scl = 0.9
+		VoiceLink.S.SPEAKING:
+			col = Tokens.HOLO_PRIMARY
+			alpha = 0.75
+			scl = 1.0 + 0.18 * sin(t * 7.0)
+	_mic_orb_mat.albedo_color = Tokens.a(col, alpha * _fade)
+	_mic_orb.scale = Vector3(scl, scl, 1.0)
+	_mic_label.text = _voice.state_text()
+	_mic_label.modulate = Tokens.a(col, _fade)
+	var sub := _voice.subtitle
+	_subtitle.text = sub
+	_subtitle.modulate = Tokens.a(Tokens.HOLO_CORE if _voice.state == VoiceLink.S.LISTENING else Tokens.HOLO_LINE, _fade)
 
 # ---------------------------------------------------------------- pieces
 
@@ -243,8 +332,9 @@ func _build_card() -> void:
 	if panel:
 		xf = Transform3D(panel.transform.basis.orthonormalized(), panel.transform.origin)
 	xf.origin += xf.basis * Vector3(0, -CARD_DROP, 0)
-	var card := _frame_quad("StatusCard", CARD_SIZE, Vector2i(320, 200), xf)
+	var card := _frame_quad("StatusCard", CARD_SIZE, Vector2i(320, 272), xf)
 	_label("STATUS", 40, Tokens.HOLO_CORE, Vector3(-CARD_SIZE.x * 0.5 + 0.03, CARD_SIZE.y * 0.5 - 0.04, 0.002), card).horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_card_text = _label("", 36, Tokens.HOLO_LINE, Vector3(-CARD_SIZE.x * 0.5 + 0.03, -0.01, 0.002), card)
+	_card_text = _label("", 36, Tokens.HOLO_LINE, Vector3(-CARD_SIZE.x * 0.5 + 0.03, CARD_SIZE.y * 0.5 - 0.075, 0.002), card)
 	_card_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_card_text.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	_card_text.line_spacing = 6.0

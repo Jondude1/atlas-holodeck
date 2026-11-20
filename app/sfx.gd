@@ -9,6 +9,8 @@ const CUES := {
 	"confirm": ["res://sounds/confirm.wav", -12.0],
 	"grab": ["res://sounds/grab.wav", -14.0],
 	"boot": ["res://sounds/boot.wav", -14.0],
+	"wake": ["res://sounds/wake.wav", -11.0],      # voice: listening opened (wake word or PTT)
+	"end": ["res://sounds/end.wav", -12.0],        # voice: utterance closed
 	"greeting": ["res://sounds/greeting.mp3", -6.0],
 	"confirm_render": ["res://sounds/confirm_render.mp3", -6.0],
 }

@@ -8,7 +8,7 @@ extends Node3D
 const RING_DEG_PER_SEC := 6.0
 const TOP_Y := 0.951       # display-inset surface height in this node's space (slab top 0.95 + 1 mm)
 const SLAB_TOP := 0.95
-const SLAB_T := 0.10
+const SLAB_T := 0.13     # heavier machined slab (brief #12; was 0.10)
 const SLAB_BODY_HALF_X := 1.12   # rectangular body; the ends taper out to 1.22 with wedges (2.44 m = 8 ft overall)
 const SLAB_HALF_Z := 0.61   # 1.22 m = 4 ft deep
 const TAPER := 0.10
@@ -18,10 +18,10 @@ const LEG_SPLAY_DEG := Vector2(8.0, 6.0)  # feet outward along X, along Z
 const READOUT_Z := 0.68    # floating readouts hover just past the player-facing edge
 const READOUT_Y := 1.12
 
-const EDGE_ENERGY := 3.4
+const EDGE_ENERGY := 2.1
 const CHANNEL_ENERGY := 4.0
 const BEVEL_ENERGY := 0.75
-const ETCH_ALPHA := 0.26
+const ETCH_ALPHA := 0.5     # end-zone etchings brighter (brief #12; was 0.26)
 const BEZEL_ENERGY := 1.4
 const LIGHT_ENERGY := 2.6
 const FILL_ENERGY := 0.7
@@ -30,9 +30,10 @@ const RIM_ENERGY := 1.2
 var inset_mat: ShaderMaterial   # grid shader on the display inset (main.gd drives its fade)
 var _ti_mat: StandardMaterial3D
 var _apron_mat: StandardMaterial3D
-var _strip_mat: StandardMaterial3D
+var _strip_mat: ShaderMaterial
+var _trim_mat: StandardMaterial3D
 var _bezel_mat: StandardMaterial3D
-var _channel_mat: StandardMaterial3D
+var _channel_mat: ShaderMaterial
 var _bevel_mat: StandardMaterial3D
 var _etch_mat: StandardMaterial3D
 var _light: OmniLight3D
@@ -57,10 +58,9 @@ func _ready() -> void:
 func set_fade(v: float) -> void:
 	_ti_mat.albedo_color = Tokens.TITANIUM * v
 	_apron_mat.albedo_color = Tokens.TITANIUM_DARK * v
-	var s := Tokens.HOLO_LINE * (EDGE_ENERGY * v)
-	_strip_mat.albedo_color = Color(s.r, s.g, s.b)
-	var c := Tokens.HOLO_LINE * (CHANNEL_ENERGY * v)
-	_channel_mat.albedo_color = Color(c.r, c.g, c.b)
+	_trim_mat.albedo_color = Tokens.TITANIUM * v
+	_strip_mat.set_shader_parameter("fade", v)
+	_channel_mat.set_shader_parameter("fade", v)
 	var bv := Tokens.TITANIUM.lerp(Tokens.HOLO_LINE, 0.55) * (BEVEL_ENERGY * v)
 	_bevel_mat.albedo_color = Color(bv.r, bv.g, bv.b)
 	_etch_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, ETCH_ALPHA * v)
@@ -82,12 +82,23 @@ func _box(parent: Node, nm: String, size: Vector3, pos: Vector3, mat: Material, 
 	parent.add_child(mi)
 	return mi
 
+## One merged mesh from a builder (every piece in it shares `mat`): a single draw call instead of one per box.
+func _merged(parent: Node, nm: String, mb: MeshBuilder, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	mi.mesh = mb.build()
+	mi.material_override = mat
+	parent.add_child(mi)
+	return mi
+
 func _build_body() -> void:
 	_ti_mat = Fx.titanium(Tokens.TITANIUM)
 	_apron_mat = Fx.titanium(Tokens.TITANIUM_DARK)
-	_strip_mat = Fx.emissive(Tokens.HOLO_LINE, EDGE_ENERGY)
+	_strip_mat = Fx.pulse_material(Tokens.HOLO_LINE, EDGE_ENERGY, Vector3.RIGHT, SLAB_BODY_HALF_X * 2.0)   # pulse travels the edge
+	_trim_mat = Fx.titanium(Tokens.TITANIUM)
+	_trim_mat.vertex_color_use_as_albedo = true
 	_bezel_mat = Fx.emissive(Tokens.HOLO_PRIMARY, BEZEL_ENERGY)
-	_channel_mat = Fx.emissive(Tokens.HOLO_LINE, CHANNEL_ENERGY)
+	_channel_mat = Fx.pulse_material(Tokens.HOLO_LINE, CHANNEL_ENERGY, Vector3.UP, LEG.y * 0.92, 0.0)   # and runs up each leg (meshes are baked in table space)
 	_bevel_mat = Fx.emissive(Tokens.TITANIUM, BEVEL_ENERGY)
 	var body := Node3D.new()
 	body.name = "Body"
@@ -111,25 +122,47 @@ func _build_body() -> void:
 	# under-slab apron: slightly inset and darker, so the slab reads as floating
 	_box(body, "Apron", Vector3(1.94, 0.07, 0.92), Vector3(0, SLAB_TOP - SLAB_T - 0.035, 0), _apron_mat)
 
-	# continuous edge light strip along both long side edges (the signature detail)
+	# heavier machined edge (brief #12): a protruding top lip and bottom skirt of brushed titanium frame a RECESSED
+	# continuous light channel (the signature detail) with a pulse running along it; an under-slab glow strip washes
+	# the floor. Lips + skirts are one merged mesh, the strips + under-glow another.
+	var trim := MeshBuilder.new()
+	var glow := MeshBuilder.new()
+	var hx := SLAB_BODY_HALF_X
+	var lip_h := 0.034
+	var skirt_h := 0.03
 	for sz in [-1.0, 1.0]:
-		_box(body, "EdgeStrip%s" % ("F" if sz > 0 else "B"), Vector3(SLAB_BODY_HALF_X * 2.0, 0.02, 0.01),
-				Vector3(0, slab_y, sz * (SLAB_HALF_Z + 0.003)), _strip_mat)
+		trim.add_box(Vector3(0, SLAB_TOP - lip_h * 0.5, sz * SLAB_HALF_Z), Vector3(hx * 2.0 + 0.02, lip_h, 0.04), Color.WHITE)
+		trim.add_box(Vector3(0, SLAB_TOP - SLAB_T + skirt_h * 0.5, sz * SLAB_HALF_Z), Vector3(hx * 2.0 + 0.02, skirt_h, 0.04), Tokens.TITANIUM_DARK.lerp(Color.WHITE, 0.45))
+		glow.add_box(Vector3(0, slab_y + 0.002, sz * (SLAB_HALF_Z + 0.004)), Vector3(hx * 2.0, 0.03, 0.014), Color.WHITE)
+		glow.add_box(Vector3(0, SLAB_TOP - SLAB_T - 0.004, sz * 0.47), Vector3(1.9, 0.008, 0.012), Color.WHITE)          # under-slab glow
+	for sx in [-1.0, 1.0]:                                                                                            # end caps
+		trim.add_box(Vector3(sx * (hx + TAPER * 0.5), slab_y, 0.0), Vector3(TAPER + 0.02, SLAB_T - 0.01, 0.03), Tokens.TITANIUM_DARK.lerp(Color.WHITE, 0.6))
+	for pair in [["TitaniumTrim", trim, _trim_mat], ["EdgeGlow", glow, _strip_mat]]:
+		var mi := MeshInstance3D.new()
+		mi.name = pair[0]
+		mi.mesh = pair[1].build()
+		mi.material_override = pair[2]
+		body.add_child(mi)
 
-	# machined bevel: a thin pale-metal highlight along the slab's top edge, front and back
+	# machined bevel: a thin pale-metal highlight along the slab's top edge, front and back (merged: one draw)
+	var bevel := MeshBuilder.new()
 	for sz in [-1.0, 1.0]:
-		_box(body, "Bevel%s" % ("F" if sz > 0 else "B"), Vector3(SLAB_BODY_HALF_X * 2.0, 0.005, 0.012),
-				Vector3(0, SLAB_TOP + 0.0005, sz * (SLAB_HALF_Z - 0.006)), _bevel_mat)
+		bevel.add_box(Vector3(0, SLAB_TOP + 0.0005, sz * (SLAB_HALF_Z - 0.006)), Vector3(SLAB_BODY_HALF_X * 2.0, 0.005, 0.012), Color.WHITE)
+	_merged(body, "Bevels", bevel, _bevel_mat)
 
-	# angled, splayed legs with a light channel down each outer face
+	# angled, splayed legs with a light channel down each outer face (legs one mesh, channels one mesh)
+	var legs := MeshBuilder.new()
+	var channels := MeshBuilder.new()
 	var leg_top := SLAB_TOP - SLAB_T - 0.07
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
 			var b := Basis.from_euler(Vector3(-sz * deg_to_rad(LEG_SPLAY_DEG.y), 0, sx * deg_to_rad(LEG_SPLAY_DEG.x)))
 			var top := Vector3(sx * 0.95, leg_top, sz * 0.42)
-			var leg := _box(body, "Leg%s%s" % ["R" if sx > 0 else "L", "F" if sz > 0 else "B"], LEG,
-					top + b * Vector3(0, -LEG.y * 0.5, 0), _ti_mat, b)
-			_box(leg, "Channel", Vector3(0.024, LEG.y * 0.92, 0.006), Vector3(0, 0, sz * (LEG.z * 0.5 + 0.001)), _channel_mat)
+			var centre := top + b * Vector3(0, -LEG.y * 0.5, 0)
+			legs.add_box(centre, LEG, Color.WHITE, b)
+			channels.add_box(centre + b * Vector3(0, 0, sz * (LEG.z * 0.5 + 0.001)), Vector3(0.024, LEG.y * 0.92, 0.006), Color.WHITE, b)
+	_merged(body, "Legs", legs, _ti_mat)
+	_merged(body, "LegChannels", channels, _channel_mat)
 
 ## Titanium needs light to catch: the display glow from just above the inset (+ a dim player-side fill).
 func _build_light() -> void:
@@ -185,10 +218,12 @@ func _build_inset() -> void:
 	var y := TOP_Y + 0.002
 	var hx := INSET.x * 0.5
 	var hz := INSET.y * 0.5
+	var bezel := MeshBuilder.new()
 	for sz in [-1.0, 1.0]:
-		_box(self, "BezelLine%s" % ("F" if sz > 0 else "B"), Vector3(INSET.x + t * 2.0, 0.004, t), Vector3(0, y, sz * (hz + t * 0.5)), _bezel_mat)
+		bezel.add_box(Vector3(0, y, sz * (hz + t * 0.5)), Vector3(INSET.x + t * 2.0, 0.004, t), Color.WHITE)
 	for sx in [-1.0, 1.0]:
-		_box(self, "BezelLine%s" % ("R" if sx > 0 else "L"), Vector3(t, 0.004, INSET.y), Vector3(sx * (hx + t * 0.5), y, 0), _bezel_mat)
+		bezel.add_box(Vector3(sx * (hx + t * 0.5), y, 0), Vector3(t, 0.004, INSET.y), Color.WHITE)
+	_merged(self, "BezelLines", bezel, _bezel_mat)
 
 ## LINK readout: a small slanted physical screen on the player-facing bezel, text just above it.
 func _build_link_screen() -> void:
@@ -277,7 +312,7 @@ func _build_motes() -> void:
 
 	_motes = GPUParticles3D.new()
 	_motes.name = "Motes"
-	_motes.amount = 40
+	_motes.amount = 90
 	_motes.lifetime = 6.0
 	_motes.preprocess = 3.0
 	_motes.emitting = false
