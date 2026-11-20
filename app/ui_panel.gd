@@ -99,6 +99,7 @@ func _build_ui() -> void:
 	slider.add_theme_stylebox_override("grabber_area", _flat(Tokens.HOLO_PRIMARY, Color(0, 0, 0, 0), 0))
 	slider.add_theme_stylebox_override("grabber_area_highlight", _flat(Tokens.HOLO_LINE, Color(0, 0, 0, 0), 0))
 	slider.value_changed.connect(func(v: float) -> void: _model.set_explode(v))   # follows set_model()
+	slider.drag_ended.connect(func(_changed: bool) -> void: Sfx.play(self, "explode"))
 	slider.value_changed.connect(_on_slider)
 	box.add_child(slider)
 	_slider = slider

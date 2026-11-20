@@ -25,6 +25,11 @@ var _ring: MeshInstance3D
 var _fade := 1.0
 var _rng := RandomNumberGenerator.new()
 var _table_xz := Vector2.ZERO
+var _arm: RobotArm
+var _station: DataStation
+
+func station() -> DataStation:
+	return _station
 
 # ---------------------------------------------------------------- colour helpers (Tokens only)
 
@@ -60,6 +65,24 @@ func build(table_xz: Vector2) -> void:
 	_screen_bank()
 	_light_fx(table_xz)
 	_seal()
+	# R3-11 living lab: the workshop arm on the right bench + the data station on the back wall
+	_arm = RobotArm.new()
+	_arm.name = "RobotArm"
+	_arm.position = Vector3(3.42, 0.9475, -1.05)
+	add_child(_arm)
+	_station = DataStation.new()
+	_station.name = "DataStation"
+	_station.position = Vector3(0, 0, -4.55)
+	add_child(_station)
+	# R3-9: the table's edge light spills onto the floor as a soft gloss strip (fake reflection)
+	var gloss := MeshInstance3D.new()
+	gloss.name = "FloorGloss"
+	var gp := PlaneMesh.new()
+	gp.size = Vector2(3.1, 1.35)
+	gloss.mesh = gp
+	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.15), Fx.radial_texture(128, 1.9))
+	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 1.05)
+	add_child(gloss)
 
 func _seal() -> void:
 	_lit_mat = StandardMaterial3D.new()
@@ -119,6 +142,8 @@ func set_fade(v: float) -> void:
 	_fx_mat.set_shader_parameter("fade", v)
 	_screen_mat.set_shader_parameter("fade", v)
 	_ring_mat.set_shader_parameter("fade", v * 0.8)
+	if _station:
+		_station.set_fade(v)
 
 func _process(delta: float) -> void:
 	if _ring:

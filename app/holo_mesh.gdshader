@@ -32,7 +32,7 @@ void fragment() {
 	float res = 1.0 - smoothstep(scan - 0.03, scan, h);
 	float band = (1.0 - clamp(abs(h - scan) / 0.05, 0.0, 1.0)) * step(0.0, scan) * step(scan, 1.05);
 
-	float lines = 0.85 + 0.15 * sin(wy * line_density);
+	float lines = 0.85 + 0.15 * sin(wy * line_density - TIME * 2.2);   // R3-8: scanlines drift slowly downward
 	float wf = fill_alpha * res * lines;
 	float we = fres * rim_strength * mix(0.55, 1.0, res);
 	float wb = band * 0.6;

@@ -11,10 +11,11 @@
 [sub_resource type="Environment" id="Env_dark"]
 background_mode = 1
 ambient_light_source = 2
+tonemap_mode = 3
 glow_enabled = true
-glow_intensity = 0.8
-glow_bloom = 0.1
-glow_hdr_threshold = 0.8
+glow_intensity = 0.7
+glow_bloom = 0.08
+glow_hdr_threshold = 0.85
 
 [sub_resource type="BoxMesh" id="Mesh_base"]
 size = Vector3(0.24, 0.02, 0.16)

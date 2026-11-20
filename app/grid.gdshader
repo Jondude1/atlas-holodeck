@@ -20,6 +20,8 @@ uniform float dist_fade = 0.0;   // 1 = attenuate with camera distance (room); 0
 uniform float near_dist = 2.5;   // full strength at or inside this distance (m)
 uniform float far_dist = 9.0;    // far_floor strength at or beyond this distance (m)
 uniform float far_floor = 0.15;
+uniform float hot_center = 0.0;   // R3-2: extra emission toward the mesh centre (table inset: the work pools light)
+uniform float hot_radius = 0.8;   // metres from centre where the hot falloff reaches zero
 
 varying vec3 lpos;
 varying vec3 lnrm;
@@ -46,5 +48,6 @@ void fragment() {
 	vec3 e = max(max(minor_color * minor * minor_strength, major_color * major * major_strength), minor_color * fine * fine_strength);
 	ALBEDO = base_color * fade;
 	float k = mix(1.0, mix(1.0, far_floor, smoothstep(near_dist, far_dist, distance(wpos, CAMERA_POSITION_WORLD))), dist_fade);
-	EMISSION = e * glow * fade * strength * k;
+	float hot = 1.0 + hot_center * (1.0 - smoothstep(0.0, hot_radius, length(lpos.xz)));
+	EMISSION = e * glow * fade * strength * k * hot;
 }

@@ -41,12 +41,18 @@ func _load_parts() -> bool:
 	var longest_m := maxf(float(td[0]), float(td[1])) * 0.0254
 	display_scale = clampf(DISPLAY_FIT_M / maxf(longest_m, 0.001), SCALE_MIN, SCALE_MAX)
 	var n_ok := 0
-	for part in manifest.get("parts", []):
+	var mparts: Array = manifest.get("parts", [])
+	# Imported single-mesh files (STL conversions) may carry a generic node name inside the GLB:
+	# a one-part manifest adopts the GLB's only mesh whatever it is called.
+	var only_mesh: MeshInstance3D = null
+	if mparts.size() == 1 and found.size() == 1:
+		only_mesh = found.values()[0]
+	for part in mparts:
 		var nm: String = part["name"]
-		if not found.has(nm):
+		if not found.has(nm) and only_mesh == null:
 			push_warning("voice-CAD: glb is missing manifest part " + nm)
 			continue
-		var mi: MeshInstance3D = found[nm]
+		var mi: MeshInstance3D = found[nm] if found.has(nm) else only_mesh
 		var xf := _rel_xf(mi, inst)
 		mi.get_parent().remove_child(mi)
 		mi.owner = null

@@ -9,6 +9,46 @@ extends Node
 ## Voice alone never prints: send-to-print is the confirmation-gated, dry-run-only PrintFlow.
 
 signal spawned(model: Node3D)
+var _station: DataStation
+var _lib_count := -1
+var _lib_recent: Array = []
+var _last_job_stamp := ""
+
+## R3-11: the back-wall data station mirrors REAL bench state (library, table, last job).
+func bind_station(st: DataStation) -> void:
+	_station = st
+	_refresh_station()
+
+static func dims_line(d: Array) -> String:
+	if d.size() < 3:
+		return ""
+	return "%s × %s × %s IN" % [_fmt(float(d[0])), _fmt(float(d[1])), _fmt(float(d[2]))]
+
+static func _fmt(v: float) -> String:
+	var t := String.num(v, 2)
+	if t.contains("."):
+		t = t.rstrip("0").rstrip(".")
+	return t
+
+func _refresh_station() -> void:
+	if _station == null:
+		return
+	var lines: Array = ["WORKSHOP OVERVIEW"]
+	lines.append("LIBRARY — %s" % ("%d PARTS" % _lib_count if _lib_count >= 0 else "—"))
+	for e in _lib_recent:
+		lines.append("· %s" % String(e))
+	if _active:
+		lines.append("ON TABLE — %d PARTS · %s" % [_active.part_names().size(), _active.dims_text()])
+	else:
+		lines.append("ON TABLE — —")
+	if _last_job_stamp != "":
+		lines.append("LAST JOB — %s" % _last_job_stamp)
+	_station.set_overview(lines)
+
+func _push_schematic_later(m: Node3D) -> void:
+	await get_tree().create_timer(1.4).timeout
+	if _station and is_instance_valid(m) and m == _active:
+		_station.set_schematic(m.schematic_texture())
 signal selected(model: Node3D)
 
 const CadModelScript := preload("res://cad_model.gd")
@@ -70,6 +110,7 @@ func _on_failed(job_id: String, detail: String) -> void:
 	if _handled.has(job_id):
 		return
 	_handled[job_id] = true
+	Sfx.play(self, "error")
 	status = ""
 	_log("job %s failed: %s" % [job_id, detail])
 	_voice.say(FailureReason.spoken(detail))     # the hub's real reason, sanitized to one sentence (R1-5)
@@ -88,6 +129,11 @@ func _on_done(job_id: String) -> void:
 	_log("job %s: downloaded %d bytes + manifest" % [job_id, glb.size()])
 	var parent := String(info.get("parent", "")) if String(info.get("kind", "")) == "edit" else ""
 	await spawn(glb, info["manifest"], job_id, parent, info.get("print_estimate", {}))
+	var td := Time.get_time_dict_from_system()
+	_last_job_stamp = "%02d:%02d" % [int(td["hour"]), int(td["minute"])]
+	_refresh_station()
+	if _station:
+		_station.celebrate()
 
 ## Polls the job so completion is caught even if the socket dropped (or the hub is reached by LAN only for REST).
 func _poll(job_id: String) -> void:
@@ -115,7 +161,15 @@ func _poll(job_id: String) -> void:
 func fetch_library() -> Array:
 	var info := await _get_json("/atlas/library")
 	var entries: Variant = info.get("entries", [])
-	return entries if entries is Array else []
+	var arr: Array = entries if entries is Array else []
+	_lib_count = arr.size()
+	_lib_recent.clear()
+	for e in arr.slice(0, 2):
+		if e is Dictionary:
+			var d: Array = e.get("dims_in", [])
+			_lib_recent.append("%s — %s" % [String(e.get("name", "PART")).to_upper(), dims_line(d)])
+	_refresh_station()
+	return arr
 
 func load_library(entry: Dictionary) -> void:
 	var eid := String(entry.get("id", ""))
@@ -174,6 +228,7 @@ func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job 
 	_log("materializing '%s' (%d parts, %s)" % [name_text, parts, m.call("spoken_dims")])
 	_voice.say(line)                         # before: what it is and its true size
 	m.labels_beat.connect(_on_labels_beat.bind(m), CONNECT_ONE_SHOT)
+	Sfx.play(self, "materialize")
 	await m.materialize()
 	_log("materialize complete")
 	for h in get_tree().get_nodes_in_group("holodeck_hands"):
@@ -303,6 +358,9 @@ func _retarget(m: Node3D) -> void:
 	_hud.call("set_model", m)
 	_table.call("set_parts", m.part_names().size())
 	_table.call("set_dims", m.dims_text())
+	_table.call("follow_model", m)
+	_refresh_station()
+	_push_schematic_later(m)
 
 # ---------------------------------------------------------------- REST
 

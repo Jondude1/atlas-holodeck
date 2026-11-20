@@ -54,6 +54,7 @@ func _ready() -> void:
 	_build_light()
 	_build_ring()
 	_build_motes()
+	_build_model_glow()
 	_build_link_screen()
 	for entry in [["parts", 0.0], ["dims", 0.4]]:
 		_labels[entry[0]] = _build_label(entry[1])
@@ -201,6 +202,8 @@ func _build_inset() -> void:
 	mi.name = "DisplayInset"
 	mi.mesh = plane
 	inset_mat = Fx.grid_material(Tokens.TABLE_SURFACE, Tokens.GRID_MINOR_STEP, Tokens.GRID_MAJOR_STEP)
+	inset_mat.set_shader_parameter("hot_center", 0.6)   # R3-2: the display pools light at the work centre
+	inset_mat.set_shader_parameter("hot_radius", 0.85)
 	mi.material_override = inset_mat
 	mi.position.y = TOP_Y
 	add_child(mi)
@@ -241,8 +244,96 @@ func _build_link_screen() -> void:
 	screen.add_child(l)
 	_labels["link"] = l
 
+# --- R3-1/R3-3: emitter glow that follows the ACTIVE model — a light pool on the display, a soft
+# --- column rising off it, and motes drifting up through the beam. Three draws, no lights.
+var _glow_group: Node3D
+var _pool_mat: StandardMaterial3D
+var _col_mat: ShaderMaterial
+var _glow_motes: GPUParticles3D
+var _glow_follow: Node3D
+var _glow_alpha := 0.0
+
+func _build_model_glow() -> void:
+	_glow_group = Node3D.new()
+	_glow_group.name = "ModelGlow"
+	_glow_group.position.y = TOP_Y
+	add_child(_glow_group)
+	_pool_mat = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.0), Fx.radial_texture(128, 1.7))
+	_pool_mat.render_priority = 2
+	var pool := MeshInstance3D.new()
+	pool.name = "GlowPool"
+	var pm := PlaneMesh.new()
+	pm.size = Vector2.ONE
+	pool.mesh = pm
+	pool.material_override = _pool_mat
+	pool.position.y = 0.003
+	_glow_group.add_child(pool)
+	_col_mat = ShaderMaterial.new()
+	_col_mat.shader = load("res://column.gdshader")
+	_col_mat.set_shader_parameter("tint", Tokens.HOLO_PRIMARY)
+	_col_mat.set_shader_parameter("fade", 0.0)
+	var mb := MeshBuilder.new()
+	for rot in [0.0, 90.0]:
+		mb.add_quad(Vector3(0, 0.28, 0), Vector2(1.0, 0.56), Basis(Vector3.UP, deg_to_rad(rot)), Color.WHITE)
+	var col := MeshInstance3D.new()
+	col.name = "GlowColumn"
+	col.mesh = mb.build()
+	col.material_override = _col_mat
+	_glow_group.add_child(col)
+	_glow_motes = GPUParticles3D.new()
+	_glow_motes.name = "GlowMotes"
+	_glow_motes.amount = 36
+	_glow_motes.lifetime = 2.6
+	_glow_motes.emitting = false
+	var pm2 := ParticleProcessMaterial.new()
+	pm2.direction = Vector3(0, 1, 0)
+	pm2.spread = 6.0
+	pm2.initial_velocity_min = 0.05
+	pm2.initial_velocity_max = 0.11
+	pm2.gravity = Vector3.ZERO
+	pm2.scale_min = 0.004
+	pm2.scale_max = 0.009
+	pm2.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
+	pm2.emission_ring_axis = Vector3(0, 1, 0)
+	pm2.emission_ring_radius = 0.35
+	pm2.emission_ring_inner_radius = 0.05
+	pm2.emission_ring_height = 0.02
+	pm2.color = Tokens.a(Tokens.HOLO_LINE, 0.55)
+	_glow_motes.process_material = pm2
+	var pq := QuadMesh.new()
+	pq.size = Vector2(0.008, 0.008)
+	pq.material = Fx.additive_unshaded(Tokens.a(Tokens.HOLO_LINE, 0.55))
+	_glow_motes.draw_pass_1 = pq
+	_glow_motes.position.y = 0.02
+	_glow_group.add_child(_glow_motes)
+	_glow_group.visible = false
+
+## Bench hook: the glow tracks this model (null = fade out).
+func follow_model(m: Node3D) -> void:
+	_glow_follow = m
+
+func _update_glow(delta: float) -> void:
+	var target := 1.0 if _glow_follow and is_instance_valid(_glow_follow) else 0.0
+	_glow_alpha = move_toward(_glow_alpha, target, delta * 1.6)
+	_glow_group.visible = _glow_alpha > 0.01
+	if not _glow_group.visible:
+		_glow_motes.emitting = false
+		return
+	if target > 0.0:
+		var lp := to_local(_glow_follow.global_position)
+		_glow_group.position.x = lp.x
+		_glow_group.position.z = lp.z
+		var b: AABB = _glow_follow.get("_bounds")
+		var sc: float = _glow_follow.global_transform.basis.get_scale().x
+		var r := maxf(maxf(b.size.x, b.size.z) * 0.5 * sc, 0.09) + 0.05
+		_glow_group.scale = Vector3(r * 2.0, 1.0, r * 2.0)
+	_pool_mat.albedo_color = Tokens.a(Tokens.HOLO_PRIMARY, 0.34 * _glow_alpha)
+	_col_mat.set_shader_parameter("fade", _glow_alpha)
+	_glow_motes.emitting = _glow_alpha > 0.4
+
 func _process(delta: float) -> void:
 	_ring_pivot.rotate_y(deg_to_rad(RING_DEG_PER_SEC) * delta)
+	_update_glow(delta)
 
 func set_link(text: String) -> void:
 	_labels["link"].text = text

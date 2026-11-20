@@ -43,6 +43,9 @@ func build(table_xz: Vector2) -> void:
 	_build_dust()
 	set_fade(1.0)
 
+func station() -> DataStation:
+	return _lab.station() if _lab else null
+
 func set_fade(v: float) -> void:
 	_fade = v
 	if _lab:

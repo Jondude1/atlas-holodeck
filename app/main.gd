@@ -51,6 +51,7 @@ func _ready() -> void:
 	_bench.name = "CadBench"
 	add_child(_bench)
 	_bench.setup(_table, _model, _panel, _hud, _voice)
+	_bench.bind_station(_room.station())
 	var print_flow := PrintFlow.new()          # confirmation-gated send-to-print (dry run only in this build)
 	print_flow.name = "PrintFlow"
 	add_child(print_flow)
@@ -130,6 +131,7 @@ func _finish_boot() -> void:
 	if _boot_finished:
 		return
 	_boot_finished = true
+	Sfx.start_hum(self)
 	_booting = false
 	_on_boot_complete()
 

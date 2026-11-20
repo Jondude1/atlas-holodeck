@@ -3,6 +3,34 @@
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
 
+## ROUND 3 (BRIEF-round3.md, brief #19) — DONE 2026-11-20 ~13:17 ET (Helios takeover build)
+Stark fidelity + living lab, table-first per Jon's steering (fidelity NOT leashed, 11:39 ET).
+SHIPPED: R3-10 explode label de-overlap (reading-plane relaxation, labels_test PASS 27/27 zero
+overlaps); R3-6 scoped (pinned part label gains true-dims line; elbow leaders + material lines
+not built — materials aren't in manifests); R3-1 model glow (pool + column + motes following the
+active model); R3-2 table hot-centre falloff; R3-11 living lab: original-design robot arm on a
+keyframed task loop (cyan emission sheen added after captures showed it reading as a black post
+under ACES), data station (real-data wall + schematic pedestal), and the Atlas presence —
+REPLACED by Jon's direction (2026-11-20 12:18-12:24 ET): no bust/figure; a DENSE living sphere
+of ~3,900 points (2,600 churning core, two tilted orbital rings, bright nucleus), cyan only,
+modelled on the JARVIS/Vision projection; celebrate = swell + churn surge. R3-4 ACES tonemap +
+glow threshold 0.85; R3-8 animated scanline term in both holo shaders; R3-9 fake floor gloss
+strip in front of the table; R3-7 sound (synthesized hum bed after boot, materialize sweep,
+explode sweep on slider release, error tone on job failure). Trims: scanner beam + empty
+schematic disc hidden when unused. VERIFIED: all 6 headless suites PASS; library_test PASS;
+labels_test PASS; round1b_exercise PASS (its PERF: 89 draw calls / 3 lights); perf probe idle
+69-74 (panel forced-always = 100-105 worst case; lived panel renders UPDATE_ONCE per R2-6).
+Exported builds/AtlasHolodeck.apk = 83,251,255 bytes, artifact gates verified, signer identical.
+Round 2.5 APK kept as builds/AtlasHolodeck-round25.apk.
+ALSO THIS ROUND (Jon's live test): the Victory-class Star Destroyer STL exposed two hub bugs —
+(1) STL->GLB conversion kept the raw filename (with .stl) as the node name so the app rejected
+it by name-match (fixed: conversion names the node by stem; app also adopts a lone mesh for
+one-part manifests — cad_model.gd), (2) no Z-up->Y-up rotation so parts stood on their tails
+(fixed: -90 deg X rotation in the converter). Hub backups: atlas_voice.py.bak-20261120-namefix
+(+ the pre-rotation deploy used the same deploy path). SD_TEST PASS end to end (spawn 11 s in
+sim, drag 0.22 m, yaw 45 deg, 2x scale). NEXT: Jon headset retest of Round 3; Round 4 candidates
+in ITERATION-BACKLOG (R3-5 HUD density was NOT built; R3-3 burst refinement partial).
+
 ## ROUND 2.5 (BRIEF-round2b.md, brief #18) — DONE 2026-11-20 ~11:30 ET (Helios takeover build)
 Parts Library, hub + app. HUB (deployed live, backup atlas_voice.py.bak-20261120-r25):
 GET /atlas/library (walks the Athena save-back tree + 3d-work/library/*.stl via

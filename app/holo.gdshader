@@ -16,6 +16,7 @@ uniform float scan = 1.2;   // scan-plane height, 0..1 across y0..y1
 uniform float y0 = 0.0;     // world-space y range of the whole model
 uniform float y1 = 1.0;
 uniform float flash = 0.0;  // 1 = edges white-hot, 0 = settled to line colour
+uniform float line_density = 360.0; // R3-8: fine horizontal scanlines per metre (world Y), matches holo_mesh
 
 varying vec3 vpos;
 varying float wy;
@@ -34,7 +35,8 @@ void fragment() {
 	float res = 1.0 - smoothstep(scan - 0.03, scan, h);
 	float band = (1.0 - clamp(abs(h - scan) / 0.05, 0.0, 1.0)) * step(0.0, scan) * step(scan, 1.05);
 
-	float wf = fill_alpha * res;
+	float lines = 0.85 + 0.15 * sin(wy * line_density - TIME * 2.2);   // R3-8: scanlines drift slowly downward
+	float wf = fill_alpha * res * lines;
 	float we = e * mix(0.55, 1.0, res);
 	float wb = band * 0.6;
 	float sum = max(wf + we + wb, 1e-3);

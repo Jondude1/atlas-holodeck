@@ -9,5 +9,9 @@ class_name Ease
 static func mv(tw: Tweener) -> Tweener:
 	return tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
+## Scalar cubic-out for hand-rolled animation (state machines, per-frame blends).
+static func out_cubic(t: float) -> float:
+	return 1.0 - pow(1.0 - clampf(t, 0.0, 1.0), 3.0)
+
 static func fd(tw: Tweener) -> Tweener:
 	return tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)

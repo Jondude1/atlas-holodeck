@@ -13,9 +13,19 @@ const CUES := {
 	"end": ["res://sounds/end.wav", -12.0],        # voice: utterance closed
 	"greeting": ["res://sounds/greeting.mp3", -6.0],
 	"confirm_render": ["res://sounds/confirm_render.mp3", -6.0],
+	"materialize": ["res://sounds/materialize.wav", -14.0],   # R3-7: scan/materialize sweep
+	"explode": ["res://sounds/explode.wav", -16.0],           # R3-7: assembly opens
+	"error": ["res://sounds/error.wav", -12.0],               # R3-7: job failed
 }
 
 var _players := {}
+var _hum: AudioStreamPlayer
+
+## R3-7: the ambient table hum — a seamless synthesized loop, started once when boot finishes.
+static func start_hum(from: Node) -> void:
+	var s := from.get_tree().get_first_node_in_group("sfx")
+	if s and s._hum and not s._hum.playing:
+		s._hum.play()
 
 func _ready() -> void:
 	add_to_group("sfx")
@@ -25,6 +35,14 @@ func _ready() -> void:
 		p.volume_db = CUES[cue][1]
 		add_child(p)
 		_players[cue] = p
+	_hum = AudioStreamPlayer.new()
+	var hw := load("res://sounds/hum.wav") as AudioStreamWAV
+	hw.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	hw.loop_begin = 0
+	hw.loop_end = hw.get_length() * hw.mix_rate
+	_hum.stream = hw
+	_hum.volume_db = -30.0
+	add_child(_hum)
 
 ## Plays a cue and waits until it finishes (no-op if the cue is unknown).
 ## The wait is DEADLINE-CAPPED (clip length + 1.5 s): awaiting the raw

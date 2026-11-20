@@ -13,6 +13,8 @@ const SCAN_PLANE_ALPHA := 0.45
 const SCAN_PLANE_MIN := 0.3    # metres: small parts still get a clear sweep
 const TETHER_RISE := 0.13      # metres: label sits this far above its part
 const TETHER_SIDE := 0.1       # ...and this far out to the side, away from the assembly centre
+const TETHER_FAN := 0.085      # R3-10: second callout column, this much further out — halves each column's stack
+const TETHER_MIN_GAP := 0.046  # R3-10: minimum vertical separation between labels sharing a column
 const DIM_LABEL_GAP := 0.06    # metres past the footprint edge: just outside the dimension line
 
 signal explode_changed(t: float)
@@ -247,8 +249,10 @@ func _style_part(p: MeshInstance3D, on: bool) -> void:
 		(t["line"] as MeshInstance3D).visible = true
 		l.modulate = Tokens.HOLO_CORE
 		l.font_size = 56
+		l.text = _part_caption(p.name, i) + "\n" + _part_dims_line(p)
 	else:
 		l.font_size = 40
+		l.text = _part_caption(p.name, i)
 		var parked_or_unseen := _parked or _tether_alpha <= 0.0
 		l.modulate = Tokens.a(Tokens.HOLO_LINE, _tether_alpha)
 		l.visible = not parked_or_unseen
@@ -399,18 +403,111 @@ static func _part_caption(part_name: String, index: int) -> String:
 	return "%s · %02d" % [" ".join(words).to_upper(), index + 1]
 
 func _update_tethers() -> void:
+	# Pass 1: each part's anchor (AABB centre) and its raw label tip.
+	var n := _tethers.size()
+	var anchors: Array[Vector3] = []
+	var raw: Array[Vector3] = []
+	var sides: Array[float] = []
 	for t in _tethers:
 		var p: MeshInstance3D = t["part"]
 		var a: Vector3 = Transform3D(p.basis, p.position) * p.mesh.get_aabb().get_center()
+		anchors.append(a)
 		var side := 1.0 if a.x >= center_local.x else -1.0
-		var tip := a + Vector3(side * TETHER_SIDE, TETHER_RISE, 0.0)
+		sides.append(side)
+		raw.append(a + Vector3(side * TETHER_SIDE, TETHER_RISE, 0.0))
+	# Pass 2 (R3-10): per side, fan the labels into two columns by height and enforce a minimum
+	# vertical separation inside each column, recentred on the column's own span — at full explode
+	# the clustered labels used to pile onto the same line and read as one smear.
+	var adj: Array[Vector3] = []
+	adj.resize(n)
+	for side in [-1.0, 1.0]:
+		var idx: Array[int] = []
+		for i in n:
+			if sides[i] == side:
+				idx.append(i)
+		idx.sort_custom(func(x: int, y: int) -> bool: return raw[x].y < raw[y].y)
+		for col in 2:
+			var members: Array[int] = []
+			for k in idx.size():
+				if k % 2 == col:
+					members.append(idx[k])
+			if members.is_empty():
+				continue
+			var ys: Array[float] = []
+			for i in members:
+				ys.append(raw[i].y)
+			for j in range(1, ys.size()):
+				ys[j] = maxf(ys[j], ys[j - 1] + TETHER_MIN_GAP)
+			var shift := (raw[members[0]].y + raw[members[members.size() - 1]].y) * 0.5 - (ys[0] + ys[ys.size() - 1]) * 0.5
+			for j in members.size():
+				var i := members[j]
+				adj[i] = Vector3(anchors[i].x + side * (TETHER_SIDE + col * TETHER_FAN), ys[j] + shift, raw[i].z)
+	# Pass 2.5: pairwise relaxation — labels in NEIGHBOURING columns at the same height can still
+	# collide when their captions are long; nudge overlapping pairs apart vertically until clear.
+	# Overlap is judged in the READING plane: you look DOWN at the table, so a label farther away
+	# projects HIGHER toward the horizon — depth leaks into screen height as y' = y - z * tan(tilt)
+	# (measured -0.235 at the capture camera's 13 deg). A pair must be clear under BOTH a gentle
+	# (0.24) and a steep (0.55) reading tilt; pairs too deep to clear by height alone also fan out in x.
+	var halves: Array[Vector2] = []
+	for i in n:
+		var txt := _part_caption((_tethers[i]["part"] as MeshInstance3D).name, i)
+		halves.append(Vector2(txt.length() * 40.0 * 0.0008 * 0.27, 0.030))
+	for _pass in 40:
+		var moved := false
+		for i in n:
+			for j in range(i + 1, n):
+				var dxv := adj[j].x - adj[i].x
+				if absf(dxv) >= halves[i].x + halves[j].x:
+					continue
+				var dyv := adj[j].y - adj[i].y
+				var dzv := adj[j].z - adj[i].z
+				var need := 0.0
+				var dir := 1.0
+				for k in [0.24, 0.55]:
+					var dyp: float = dyv - float(k) * dzv
+					if absf(dyp) < halves[i].y + halves[j].y:
+						var req := halves[i].y + halves[j].y - absf(dyp) + 0.004
+						if req > need:
+							need = req
+							dir = 1.0 if dyp >= 0.0 else -1.0
+				if need <= 0.0:
+					continue
+				var dyv2 := dyv + need * dir
+				var residual := 0.0
+				for k in [0.24, 0.55]:
+					residual = maxf(residual, halves[i].y + halves[j].y - absf(dyv2 - float(k) * dzv))
+				if residual > 0.01:   # too deep to clear by height alone: fan apart in x as well
+					var xneed := (halves[i].x + halves[j].x - absf(dxv)) + 0.01
+					var sgn := 1.0 if dxv >= 0.0 else -1.0
+					adj[j].x += xneed * 0.5 * sgn
+					adj[i].x -= xneed * 0.5 * sgn
+				adj[j].y += need * 0.5 * dir
+				adj[i].y -= need * 0.5 * dir
+				moved = true
+		if not moved:
+			break
+	# Pass 3: draw the tether to the (possibly spread) tip and park the label on it.
+	for i in n:
+		var t: Dictionary = _tethers[i]
+		var a := anchors[i]
+		var tip := adj[i]
 		var line: MeshInstance3D = t["line"]
 		var d := tip - a
 		var up := Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
 		line.transform = Transform3D(Basis.looking_at(d, up) * Basis.from_scale(Vector3(1, 1, d.length())), a.lerp(tip, 0.5))
 		var l: Label3D = t["label"]
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if side > 0 else HORIZONTAL_ALIGNMENT_RIGHT
-		l.position = tip + Vector3(side * 0.008, 0.012, 0.0)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if sides[i] > 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		l.position = tip + Vector3(sides[i] * 0.008, 0.012, 0.0)
+
+## A part's true size in the house format (X × Z × Y inches, feet+inches past 24 in) from its AABB.
+func _part_dims_line(p: MeshInstance3D) -> String:
+	var sz := p.mesh.get_aabb().size / display_scale
+	var inches := [sz.x / 0.0254, sz.z / 0.0254, sz.y / 0.0254]
+	var long_form := inches.any(func(v): return v >= 24.0)
+	var parts := PackedStringArray()
+	for v in inches:
+		parts.append(_fmt_len(v, long_form))
+	return " × ".join(parts) + ("" if long_form else " IN")
 
 func set_tether_alpha(a: float) -> void:
 	_tether_alpha = a
@@ -463,6 +560,11 @@ func _set_state(shown: bool, scan: float, flash_v: float, wire: float) -> void:
 func _set_param(v: float, param: StringName) -> void:
 	for m in _mats:
 		m.set_shader_parameter(param, v)
+
+## The painted flat-schematic texture (null until the deferred paint lands) — the data station's
+## pedestal disc shows the same drawing across the room (R3-11).
+func schematic_texture() -> Texture2D:
+	return _schematic_mat.albedo_texture if _schematic_mat else null
 
 func _set_schematic_alpha(a: float) -> void:
 	_schematic_mat.albedo_color = Color(1, 1, 1, a)
