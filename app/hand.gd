@@ -23,7 +23,7 @@ func _ready() -> void:
 		_laser.visible = pointer
 
 func _on_pressed(action: String) -> void:
-	if action == "grip_click" and _held == null:
+	if action == "grip_click" and (_held == null or not is_instance_valid(_held)):
 		var m := _nearest_grabbable()
 		if m:
 			_held = m
@@ -76,7 +76,8 @@ func _on_released(action: String) -> void:
 		if vx:
 			vx.ptt_end()
 	if action == "grip_click" and _held:
-		_held.end_grab(self)
+		if is_instance_valid(_held):      # an in-place CAD edit can free the model under a hand
+			_held.end_grab(self)
 		_held = null
 	elif action == "trigger_click" and _pressing:
 		_pressing = false

@@ -21,6 +21,9 @@ signal said(text: String)                # Atlas's reply text (also shown as a s
 signal cad_job(job_id: String, text: String)
 signal cad_done(job_id: String)
 signal cad_failed(job_id: String, detail: String)
+signal print_request(ev: Dictionary)      # the hub heard "send it to the printer": opens the confirmation (never starts a print)
+signal print_confirm(job_id: String)      # a spoken yes that the hub matched to a pending print request
+signal print_cancel(job_id: String)
 
 const MIC_BUS := "HoloMic"
 const TARGET_RATE := 16000.0
@@ -315,6 +318,15 @@ func _on_event(ev: Variant) -> void:
 		"cad_failed":
 			_log("CAD job failed: %s" % ev.get("detail", "?"))
 			cad_failed.emit(String(ev.get("job_id", "")), String(ev.get("detail", "")))
+		"print_request":
+			_log("print request: %s (%s)" % [ev.get("job_id", "?"), ev.get("est_text", "?")])
+			print_request.emit(ev)
+		"print_confirm":
+			_log("spoken confirm: %s" % ev.get("job_id", "?"))
+			print_confirm.emit(String(ev.get("job_id", "")))
+		"print_cancel":
+			_log("spoken cancel: %s" % ev.get("job_id", "?"))
+			print_cancel.emit(String(ev.get("job_id", "")))
 		"idle":
 			if not _tts_busy and (state == S.LISTENING or state == S.THINKING):
 				_ptt = false
@@ -399,6 +411,13 @@ func ptt_begin() -> void:
 	Sfx.play(self, "wake")
 	_set_subtitle("LISTENING…")
 	_set_state(S.LISTENING)
+
+## Small control messages to the hub on the open socket (print_pending / print_clear). False when the socket is down.
+func hub_event(ev: Dictionary) -> bool:
+	if _ws == null or _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return false
+	_ws.send_text(JSON.stringify(ev))
+	return true
 
 func ptt_end() -> void:
 	if not _ptt or not _ws_ready:

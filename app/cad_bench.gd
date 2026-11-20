@@ -4,7 +4,9 @@ extends Node
 ## follows the job (socket events AND a status poll, so a dropped socket can't lose a finished part), downloads the
 ## .glb + manifest, and materializes the result with the existing language. The previously active model is parked
 ## aside (multi-object bench); the new one takes centre stage, the panel/HUD/readouts retarget to it.
-## Voice alone never prints: this build has no print path at all (a future one is panel-confirmation only).
+## A follow-up edit ("make it taller") arrives as a job whose status names its `parent`: the revised model REPLACES the
+## parent's model in place (same bench slot, same transform) instead of being parked next to it (brief #16 R1-4).
+## Voice alone never prints: send-to-print is the confirmation-gated, dry-run-only PrintFlow.
 
 signal spawned(model: Node3D)
 signal selected(model: Node3D)
@@ -26,6 +28,10 @@ var _active: Node3D
 var _bench: Array[Node3D] = []
 var _handled := {}
 var _t_job := 0.0
+var _print: PrintFlow
+
+func bind_print(pf: PrintFlow) -> void:
+	_print = pf
 
 func setup(table: Node3D, first_model: Node3D, panel: Node3D, hud: Node, voice: VoiceLink) -> void:
 	_table = table
@@ -69,7 +75,8 @@ func _on_done(job_id: String) -> void:
 		_voice.say("The part finished, but I couldn't bring it over. Ask me again in a moment.")
 		return
 	_log("job %s: downloaded %d bytes + manifest" % [job_id, glb.size()])
-	await spawn(glb, info["manifest"])
+	var parent := String(info.get("parent", "")) if String(info.get("kind", "")) == "edit" else ""
+	await spawn(glb, info["manifest"], job_id, parent, info.get("print_estimate", {}))
 
 ## Polls the job so completion is caught even if the socket dropped (or the hub is reached by LAN only for REST).
 func _poll(job_id: String) -> void:
@@ -89,12 +96,15 @@ func _poll(job_id: String) -> void:
 				return
 
 ## Builds the model from downloaded bytes and runs the arrival: park the old one, speak, materialize, retarget.
-func spawn(glb: PackedByteArray, manifest: Dictionary) -> Node3D:
+func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job := "", estimate := {}) -> Node3D:
+	var old := find_by_job(parent_job)       # a revision replaces its parent's model; null = a fresh design
 	var m: Node3D = Node3D.new()
 	m.set_script(CadModelScript)
 	m.name = "CadModel%d" % (_bench.size())
 	m.call("setup", glb, manifest)
-	m.position = _active.position if _active else Vector3(0, 0.951, 0)
+	m.set("job_id", job_id)
+	m.set("print_estimate", estimate)
+	m.position = old.position if old else (_active.position if _active else Vector3(0, 0.951, 0))
 	_table.add_child(m)                      # _ready builds parts + schematic + tethers (hidden)
 	if not m.get("load_ok"):
 		m.queue_free()
@@ -102,6 +112,8 @@ func spawn(glb: PackedByteArray, manifest: Dictionary) -> Node3D:
 		_voice.say("The part came back, but I couldn't read it. Let's try that again.")
 		return null
 	m.call("hide_all")
+	if old:
+		return await _replace_in_place(old, m, manifest)
 	_park_active()
 	_bench.append(m)
 	_watch(m)
@@ -119,6 +131,47 @@ func spawn(glb: PackedByteArray, manifest: Dictionary) -> Node3D:
 	_log("materialize complete")
 	spawned.emit(m)
 	await _voice.say("Take a look. You can grab it, or pull it apart from the panel. Nothing goes to the printer without your confirmation.")
+	status = ""
+	return m
+
+## The bench model that was built from `job_id` (null when none, e.g. the demo bracket or a trimmed model).
+func find_by_job(job_id: String) -> Node3D:
+	if job_id == "":
+		return null
+	for b in _bench:
+		if is_instance_valid(b) and String(b.get("job_id")) == job_id:
+			return b
+	return null
+
+## R1-4: the revised model takes the old one's bench slot, transform (position, orientation, scale; TRUE SIZE stays true
+## size) and parked/active role. The old model is freed (no second copy on the table); the arrival is the usual scan.
+func _replace_in_place(old: Node3D, m: Node3D, manifest: Dictionary) -> Node3D:
+	var was_parked: bool = old.call("is_parked")
+	var keep_true := absf(old.scale.x * float(old.get("display_scale")) - 1.0) < 0.01 and absf(float(old.get("display_scale")) - 1.0) > 0.01
+	m.position = old.position
+	m.quaternion = old.quaternion
+	m.scale = (Vector3.ONE / float(m.get("display_scale"))) if keep_true else old.scale
+	var slot := _bench.find(old)
+	var was_active := old == _active
+	old.call("_cancel_motion")
+	old.call("clear_highlight")
+	_bench[slot] = m
+	_watch(m)
+	if was_active:
+		_active = m
+	old.queue_free()
+	if was_active:
+		_retarget(m)
+	status = "READY"
+	var name_text := String(manifest.get("name", "part"))
+	var line := "Updated. %s is now %s." % [name_text, m.call("spoken_dims")]
+	_log("replaced %s in place with '%s' (%s, parked=%s)" % [old.name, name_text, m.call("spoken_dims"), was_parked])
+	_voice.say(line)
+	m.labels_beat.connect(_on_labels_beat.bind(m), CONNECT_ONE_SHOT)
+	await m.materialize()
+	if was_parked:
+		m.call("park", m.position, m.scale.x)
+	spawned.emit(m)
 	status = ""
 	return m
 
@@ -194,6 +247,8 @@ func _trim_bench() -> void:
 		victim.queue_free()
 
 func _retarget(m: Node3D) -> void:
+	if _print:
+		_print.model_changed()               # an open send-to-print confirmation named the part that was just replaced
 	_panel.call("set_model", m)
 	_hud.call("set_model", m)
 	_table.call("set_parts", m.part_names().size())

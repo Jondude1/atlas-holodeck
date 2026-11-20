@@ -335,6 +335,36 @@ fixed in the script, never waived. This doubles as the voice-CAD worker's genera
 6. Follow-ups ("make the holes bigger", "add a gusset") repeat the loop; the script
    on Athena is edited and re-run, and the model on the table is replaced in place.
 
+### Round 1B additions (brief #16, 2026-11-20)
+
+- **Follow-up edits (R1-4).** The hub remembers the Holodeck's latest job (`last_job`, 30 min window). An utterance that
+  matches the narrow edit cues ("make it taller", "add two holes", "thicker walls", "remove the lip") while a finished job
+  exists is routed to a **revision**: `new_job(text, parent)` stores `parent`/`kind: "edit"`, a composite prompt (original
+  request + the change), and the writer is handed the parent's `job.py` plus the requested change, not a blank page. A
+  "make me a ..." / "new" / "another" request is always a fresh design; while the last job is still building the hub asks
+  Jon to wait. `POST /atlas/cad-job` also takes `edit_of` (must name a finished job, else 409). The headset sees the job's
+  `parent` in the status JSON and **replaces the parent's model in place** (same bench slot, position, orientation, scale;
+  TRUE SIZE stays TRUE SIZE; old node freed) instead of parking it.
+- **Send-to-print, dry run only (R1-8).** Panel `SEND TO PRINTER` or a spoken "send it to the printer" opens a confirmation
+  card (part, material PLA, printer S1, estimated time) — and nothing else. Only the panel CONFIRM press, or a spoken yes
+  arriving while the card is open for that same part, moves on; cancel / no / 45 s timeout / the part being replaced
+  closes it with nothing sent (`PrintFlow`, `print_flow.gd`). The hub classifies the spoken yes/no only while a request is
+  pending (voice request, or the app's `print_pending` socket message) and merely reports it; the headset then calls
+  `POST /atlas/print-job {job_id, confirmed:true}`, which validates and returns a **dry-run plan** (`dry_run:true`,
+  `contacted_printer:false`, `sliced:false`: file, printer S1, profile, steps) and logs `[print-job DRY-RUN]`. It never
+  slices and never contacts the printer. The live path is the `live_print()` stub + `PRINT_LIVE=False` in `atlas_voice.py`
+  and the client refuses any reply that is not a dry run: wiring it needs Jon's separate sign-off.
+- **Real silhouette schematic (R1-12).** `Blueprint.make_silhouette` rasterises every part's triangles top-down (XZ), takes
+  the union as the outline, finds the real through-holes as enclosed empty regions (centre/size from the raster, crosshair on
+  round ones), adds a section hatch and the dimension lines. The layer is a child of the model, so it rotates and scales
+  with it. Holes whose axis is horizontal (a screw hole through a wall) are not visible from above and are not drawn.
+  The old bounding-box + bolt-pattern layer remains reachable via `Blueprint.legacy` for comparison only.
+- **Save-back (R1-9).** After a successful build the hub copies `model.py` (the script that ran), `model.step`,
+  `model.glb`, `manifest.json`, `job.json` into the shared Athena library tree:
+  `C:\Users\jon\mediastack\3d-work\out\holodeck\<name-slug>-<job_id>\` (container `/work/out/holodeck/...`), recorded in
+  the job as `library`. The runner's own `out/voicecad/<id>/` copy and the hub job folder are kept. Redirect by changing
+  `LIBRARY_SUBDIR` in `atlas_voice.py`.
+
 ## 4. v1 scope
 
 **In:**

@@ -16,6 +16,13 @@ var _voice: VoiceLink
 var _voice_label: Label
 var _mic_button: Button
 var _talk_button: Button
+var _print: PrintFlow
+var _card: PanelContainer               # the send-to-print confirmation card (R1-8), over the whole panel while a request is open
+var _card_title: Label
+var _card_body: Label
+var _card_hint: Label
+var _card_confirm: Button
+var _card_cancel: Button
 
 const SHOWN_SCALE_FROM := 0.9
 const PART_ROWS := 4
@@ -131,6 +138,13 @@ func _build_ui() -> void:
 	bottom.add_child(fix_floor)
 	box.add_child(bottom)
 
+	var send := _action_button("SEND TO PRINTER", Vector2(0, 60), 30)   # opens the confirmation card; never prints by itself
+	send.pressed.connect(func() -> void:
+		if _print and _model:
+			_print.request_for(_model))
+	box.add_child(send)
+	_build_print_card()
+
 ## Shared styling for the plain action buttons (tick on hover, light pulse + confirm on press).
 func _action_button(text: String, min_size: Vector2, font_size: int) -> Button:
 	var b := Button.new()
@@ -228,6 +242,11 @@ func poke(seconds := PANEL_POKE_S) -> void:
 	_poke_t = maxf(_poke_t, seconds)
 
 func _process(delta: float) -> void:
+	if _card and _card.visible and _print and _print.is_confirming():
+		var t := "or say YES or NO  ·  closes in %d s" % ceili(_print.seconds_left())
+		if t != _card_hint.text:
+			_card_hint.text = t
+			poke()
 	if _poke_t > 0.0:
 		_poke_t -= delta
 		_idle_t = 0.0
@@ -376,3 +395,81 @@ func pick(origin: Vector3, dir: Vector3) -> Variant:
 func push(ev: InputEvent) -> void:
 	poke()
 	_vp.push_input(ev)
+
+# ---------------------------------------------------------------- send-to-print confirmation card (R1-8, dry run)
+
+func _build_print_card() -> void:
+	_card = PanelContainer.new()
+	_card.name = "PrintCard"
+	_card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var sb := _flat(Color(Tokens.HOLO_DEEP.r * 0.8, Tokens.HOLO_DEEP.g * 0.8, Tokens.HOLO_DEEP.b * 0.8, 1.0), Tokens.HOLO_CORE, 3)
+	sb.set_content_margin_all(28)
+	_card.add_theme_stylebox_override("panel", sb)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 18)
+	_card.add_child(box)
+	_card_title = Label.new()
+	_card_title.add_theme_font_override("font", load(Tokens.FONT_BOLD))
+	_card_title.add_theme_font_size_override("font_size", 44)
+	_card_title.add_theme_color_override("font_color", Tokens.HOLO_CORE)
+	box.add_child(_card_title)
+	_card_body = Label.new()
+	_card_body.add_theme_font_size_override("font_size", 32)
+	_card_body.add_theme_color_override("font_color", Tokens.HOLO_LINE)
+	_card_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_card_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(_card_body)
+	_card_hint = Label.new()
+	_card_hint.add_theme_font_size_override("font_size", 26)
+	_card_hint.add_theme_color_override("font_color", Tokens.GRID_MINOR.lightened(0.5))
+	box.add_child(_card_hint)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	box.add_child(row)
+	_card_confirm = _action_button("CONFIRM", Vector2(0, 90), 40)
+	_card_confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card_confirm.pressed.connect(func() -> void: if _print: _print.confirm("panel"))
+	row.add_child(_card_confirm)
+	_card_cancel = _action_button("CANCEL", Vector2(0, 90), 40)
+	_card_cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card_cancel.pressed.connect(func() -> void:
+		if _print:
+			if _print.state == PrintFlow.S.CONFIRMING:
+				_print.cancel("panel")
+			else:
+				_print.dismiss())
+	row.add_child(_card_cancel)
+	_card.visible = false
+	_vp.add_child(_card)
+
+func bind_print(pf: PrintFlow) -> void:
+	_print = pf
+	pf.state_changed.connect(_on_print_state)
+
+func _on_print_state(s: int) -> void:
+	poke(3.0)
+	_card.visible = s != PrintFlow.S.IDLE
+	_card_confirm.visible = s == PrintFlow.S.CONFIRMING or s == PrintFlow.S.SUBMITTING
+	_card_confirm.disabled = s == PrintFlow.S.SUBMITTING
+	_card_cancel.text = "CANCEL" if s == PrintFlow.S.CONFIRMING else "DISMISS"
+	_card_cancel.disabled = s == PrintFlow.S.SUBMITTING
+	var i := _print.info
+	match s:
+		PrintFlow.S.CONFIRMING:
+			_card_title.text = "SEND TO PRINTER?"
+			_card_body.text = "PART       %s\nMATERIAL   %s\nPRINTER    %s\nEST. TIME  ~ %s\n\nDRY RUN: this build only plans the print. The printer is not contacted." % [
+					String(i.get("name", "?")).to_upper(), i.get("material", "PLA"), i.get("printer", "S1"), i.get("est_text", "?")]
+			_card_hint.text = "or say YES or NO"
+		PrintFlow.S.SUBMITTING:
+			_card_title.text = "PLANNING..."
+			_card_hint.text = ""
+		PrintFlow.S.DONE:
+			var would: Dictionary = _print.plan.get("would", {})
+			_card_title.text = "DRY RUN COMPLETE"
+			_card_body.text = "WOULD SLICE  %s\nPRINTER      %s\nPROFILE      %s\n\nNOT SLICED. PRINTER NOT CONTACTED." % [
+					String(would.get("file", "?")).get_file(), would.get("printer", "?"), would.get("profile", "?")]
+			_card_hint.text = "live printing needs Jon's separate sign-off"
+		PrintFlow.S.FAILED:
+			_card_title.text = "COULDN'T PLAN"
+			_card_body.text = _print.reason.to_upper()
+			_card_hint.text = ""

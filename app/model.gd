@@ -20,6 +20,8 @@ var explode_value := 0.0
 ## Parts of a voice-CAD model are scaled up to a table-readable size at load (a 3 in part is 7.6 cm); this is that
 ## factor, so every displayed size (dimension labels, DIMS) is divided back to true inches. 1.0 = shown at true scale.
 var display_scale := 1.0
+var job_id := ""                    # the hub job a runtime CAD model was built from ("" for the demo part); edits + send-to-print use it
+var print_estimate := {}            # the hub's {est_minutes, est_text, ...} for the confirmation card
 var _parked := false
 
 var _parts: Array[MeshInstance3D] = []
@@ -286,7 +288,8 @@ func _build_schematic() -> void:
 	_schematic_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_schematic_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_schematic_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_schematic_mat.albedo_texture = Blueprint.make(foot, quad_m)
+	# R1-12: the real part outline (top-down silhouette + actual through-holes); Blueprint.legacy = the old bbox + bolt layer
+	_schematic_mat.albedo_texture = Blueprint.make(foot, quad_m) if Blueprint.legacy else Blueprint.make_silhouette(_parts, foot, quad_m)
 	_schematic = MeshInstance3D.new()
 	_schematic.name = "Schematic"
 	_schematic.mesh = quad

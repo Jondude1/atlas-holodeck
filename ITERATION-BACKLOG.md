@@ -175,6 +175,7 @@ Order: R1-1, R1-2, R1-3 (core interaction) → R1-10, R1-4 → R1-5, R1-6 → R1
 | R3-7 | Sound design: ambient table hum bed, scan/materialize sweep, explode sweep, error tone, spatial UI ticks (8, 47) | M | J only (audio); H: asset generation + cue wiring |
 | R3-8 | Scanline/air-shimmer overlay and subtle chromatic edge on holograms (43) | S | H: capture; J: cost |
 | R3-9 | Reflection-style floor/table gloss (fake: mirrored low-res glow strip, no SSR) (7) | M | H: capture; J: cost |
+| R3-10 | **Explode label de-overlap** — at 100% explode, labels of clustered parts pile up illegibly (seen in `captures/r1-trebuchet-exploded-pinned.png`); needs leader-line spreading / distance fade (backlog only, from Round 1B) | M | H: capture with the 27-part trebuchet at 100% explode, no overlapping label rects; J: legibility |
 
 ### Cross-cutting notes
 - Everything Jon-only (feel, mic, TTS audibility, frame time) can only be closed by a headset session; the floor-height retest (§7 bug #2) and the first real PTT/CAD run are still outstanding from the combined build and should come first.

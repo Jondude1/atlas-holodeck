@@ -3,7 +3,33 @@
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
 
-## NEXT WORK: Round 1B (BRIEF-round1.md Round 1A is DONE, 2026-11-20)
+## ROUND 1B (BRIEF-round1b.md, brief #16) — DONE 2026-11-20, exported, awaiting Jon's headset feel-test
+No git commits made. Hub source of truth: `~/workspace/atlas-overlay-build/repo/obelisk/atlas_voice.py` (pre-change copy kept at
+`.atlas_voice.py.pre-round1b`). **DEPLOYED to the live hub** (Obelisk /home/jon/Projects/Anzu-1/obelisk/atlas_voice.py, md5 148e6ae4...;
+backup `atlas_voice.py.bak-round1b-<stamp>` beside it; atlas-server.service restarted, active). Phone routes re-verified after:
+/atlas/status 200, token gating 401, /atlas/voice-status 200 (kws true), /atlas/ask 200 (answer text is the known degraded
+brain-chain issue, unrelated). Helper scripts: ~/workspace/tooling/{deploy_voice,verify_hub,live_two_step,export_holodeck}.*
+- [x] R1-4 edit-in-place — hub `last_job` + edit-intent routing + writer gets parent script; app swaps the model in place.
+  Proof: hub pytest (8 tests, tests/test_voice_round1b.py); app `tools/round1b_exercise.gd` vs `tools/mock_hub.py --edit-assets`
+  (same bench slot / position / orientation / scale, old node freed); LIVE two-step on the real hub (3x1x3 in -> 3x1x5 in + holes,
+  the real writer revised job A's script).
+- [x] R1-8 send-to-print, DRY RUN ONLY — panel SEND TO PRINTER + voice entry -> confirmation card (part, PLA, printer S1, est. time)
+  -> explicit confirm only; hub POST /atlas/print-job returns a dry-run plan, never slices/contacts the printer, logs
+  `[print-job DRY-RUN]`; `live_print()` stub + `PRINT_LIVE=False` is the seam (needs Jon's sign-off). Proof: print_flow_test.gd
+  (21 checks), hub pytest, exercise captures. Panel viewport grew 640x720 -> 640x800 (quad 0.8x1.0, y 1.47) to fit the new row.
+- [x] R1-12 silhouette — `Blueprint.make_silhouette` (real outline + real plan-view through-holes + hatch). silhouette_test.gd PASS
+  (holes at the exact CAD positions/radii); captures r1b-silhouette-{bracket,treb}-{new,old,model}.png. ~0.35-0.45 s one-off at spawn.
+- [x] R1-9 save-back — hub copies model.py/.step/.glb/manifest/job.json to Athena `3d-work/out/holodeck/<slug>-<job_id>/`
+  (+ job-folder + runner out/voicecad copies kept); verified LIVE on Athena (5 files per job).
+- [x] Backlog: R3-10 explode label de-overlap added to ITERATION-BACKLOG.md.
+- [x] Export: builds/AtlasHolodeck.apk 83,127,176 B (release, debug cert), apksigner Verifies (v2), package com.jondude.holodeck,
+  _cl_ = --xr_mode_openxr, libopenxr_loader.so, RECORD_AUDIO + INTERNET, hub_secret.cfg baked, VR category x2, networkSecurityConfig.
+  Round 1A APK kept as builds/AtlasHolodeck-round1a.apk.
+Draw calls: 76-77 (bracket revision + parked bracket, panel active), 3 lights; the 27-part trebuchet stays above 90 (known, R2 item).
+Headset-only (NOT proven): confirm-button/ray ergonomics on the new card, spoken-yes over the real mic, in-place swap feel while holding
+the model, schematic legibility at table distance, real print flow (not built by design).
+
+## (history) Round 1A notes — Round 1B above is now done; next is Round 2
 Round 1A (brief #15) built + headless-proven (explode/panel/failure/interaction tests PASS). Exported 2026-11-20 09:01 in the recovery run: builds/AtlasHolodeck.apk, 83,108,181 bytes (release export, debug cert CN=Android Debug), apksigner Verifies (v2), package com.jondude.holodeck, assets/_cl_ = --xr_mode_openxr, lib/arm64-v8a/libopenxr_loader.so present, RECORD_AUDIO + INTERNET in manifest, hub_secret.cfg baked. Not yet handed to Jon; awaiting his headset feel-test. (Earlier note claiming 'exported' was premature: the first run was killed before export.) Draw-call probe not re-run in recovery; numbers below are from the earlier run. Round 1B items, in
 ITERATION-BACKLOG.md order, are NOT started: follow-up edit-in-place (R1-4, hub keeps last job id + edit intent),
 print path (R1-8, needs Jon's sign-off before touching the printer), real silhouette schematic (R1-9), save-back

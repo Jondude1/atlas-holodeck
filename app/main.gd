@@ -43,6 +43,12 @@ func _ready() -> void:
 	_bench.name = "CadBench"
 	add_child(_bench)
 	_bench.setup(_table, _model, _panel, _hud, _voice)
+	var print_flow := PrintFlow.new()          # confirmation-gated send-to-print (dry run only in this build)
+	print_flow.name = "PrintFlow"
+	add_child(print_flow)
+	print_flow.bind_voice(_voice)
+	_panel.bind_print(print_flow)
+	_bench.bind_print(print_flow)
 	_table.set_link("LINK — LOCAL (XR)" if _xr_ok else "LINK — FALLBACK")
 	_table.set_parts(_model.part_names().size())
 	_table.set_dims(_model.dims_text())

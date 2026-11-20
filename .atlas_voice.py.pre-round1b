@@ -1,0 +1,584 @@
+"""Atlas voice-stream + voice-CAD (Holodeck brief #11). ADDITIVE module for the live hub.
+
+Installed by exactly one line in atlas_server.py, placed BEFORE `app.mount("/", _mcp_app)` (that mount is a
+catch-all: anything registered after it would be shadowed):
+
+    import atlas_voice; atlas_voice.install(app, sys.modules[__name__])
+
+Adds (no existing route is touched):
+    WS   /atlas/voice-stream          PCM16 16 kHz mono in; wake / transcript / reply / cad events out
+    POST /atlas/speak                 {text, voice?} -> audio/mpeg   (proxy of the Kokoro server on this box)
+    POST /atlas/cad-job               {prompt} -> {job_id}
+    GET  /atlas/cad-job/{id}          status + manifest when done
+    GET  /atlas/cad-job/{id}/model    the glTF binary
+    GET  /atlas/voice-status          diagnostics (spotter loaded?, jobs)
+
+Everything is token-gated exactly like /atlas/ask (Authorization: Bearer, or open when ATLAS_TOKEN is unset).
+Reuses from the hub: faster-whisper (same model name, own CPU instance - see "speech-to-text"), the ask path (ask/Ask), the vault log (log/LogEntry), _chat,
+and the hub's own ssh-to-Athena convention (ATHENA_HOST, BatchMode).
+"""
+import asyncio
+import collections
+import json
+import logging
+import os
+import re
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Optional
+
+import httpx
+import numpy as np
+from fastapi import Depends, HTTPException, WebSocket
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel
+
+LOG = logging.getLogger("uvicorn.error")
+
+HERE = Path(__file__).parent
+KWS_DIR = Path(os.environ.get("ATLAS_KWS_DIR", str(HERE / "kws")))
+KOKORO_URL = os.environ.get("ATLAS_KOKORO_URL", "http://127.0.0.1:8880/v1").rstrip("/")
+KOKORO_VOICE = os.environ.get("ATLAS_KOKORO_VOICE", "af_heart")          # same default voice as the phone app
+JOB_DIR = Path(os.environ.get("ATLAS_CAD_JOBS", str(Path.home() / ".local/share/atlas/cad-jobs")))
+ATHENA_WORK_WIN = "C:/Users/jon/mediastack/3d-work"                       # Windows side of the container's /work
+ATHENA_CONTAINER = os.environ.get("ATLAS_CAD_CONTAINER", "build123d")
+CLAUDE_BIN = os.environ.get("ATLAS_CLAUDE_BIN", str(Path.home() / ".local/bin/claude"))
+
+DEBUG = os.environ.get("ATLAS_VOICE_DEBUG") == "1"
+SR = 16000
+CHUNK_PREROLL_S = 0.6        # audio kept from before the wake fires (the word itself is already behind us)
+END_SILENCE_S = 1.2          # utterance end after this much silence since the last voiced audio (counted from the wake)
+NO_SPEECH_S = 6.0            # a wake that is never followed by speech gives up
+MAX_UTTERANCE_S = 20.0
+MAX_PTT_S = 30.0
+ASK_BUDGET_S = 25.0          # /atlas/ask can take 60 s+ on this box (14B model split CPU/GPU); a headset can't wait that long
+CAD_ATTEMPTS = 3             # first write + 2 repair passes
+CAD_ATTRS = ("job_id", "status", "stage", "prompt", "name", "error", "attempts", "created", "updated")
+
+JOB_ID_RE = re.compile(r"^[a-f0-9]{10}$")
+
+
+class SpeakReq(BaseModel):
+    text: str
+    voice: Optional[str] = None
+
+
+class CadJobReq(BaseModel):
+    prompt: str
+
+
+def install(app, srv) -> None:
+    token = srv.TOKEN
+
+    def auth_ok(header: Optional[str]) -> bool:
+        return (not token) or header == f"Bearer {token}"
+
+    # ------------------------------------------------------------------ keyword spotter (shared, lazy)
+    kws_lock = threading.Lock()
+    kws_box = {"spotter": None, "error": None, "tried": False}
+
+    def spotter():
+        if kws_box["tried"]:
+            return kws_box["spotter"]
+        with kws_lock:
+            if kws_box["tried"]:
+                return kws_box["spotter"]
+            kws_box["tried"] = True
+            try:
+                import sherpa_onnx
+                kws_box["spotter"] = sherpa_onnx.KeywordSpotter(
+                    tokens=str(KWS_DIR / "tokens.txt"),
+                    encoder=str(KWS_DIR / "encoder.int8.onnx"),
+                    decoder=str(KWS_DIR / "decoder.int8.onnx"),
+                    joiner=str(KWS_DIR / "joiner.int8.onnx"),
+                    keywords_file=str(KWS_DIR / "keywords.txt"),
+                    num_threads=1, sample_rate=SR, feature_dim=80,
+                    keywords_score=1.0, keywords_threshold=0.1, num_trailing_blanks=2,   # phone uses 1; 2 cut false wakes 5/20 -> 1/20 on adversarial phrases
+                )
+                LOG.info("voice: sherpa-onnx keyword spotter loaded from %s", KWS_DIR)
+            except Exception as e:  # PTT stays fully usable without it
+                kws_box["error"] = f"{type(e).__name__}: {e}"
+                LOG.warning("voice: keyword spotter unavailable (%s) - PTT only", kws_box["error"])
+        return kws_box["spotter"]
+
+    # ------------------------------------------------------------------ speech-to-text
+    # The hub's own _model() loads faster-whisper with compute_type="auto", which selects CUDA here and dies on a missing
+    # libcublas.so.12 (so POST /atlas/transcribe cannot transcribe real audio on this box). That route is left untouched
+    # (additive-only rule); the voice path loads the SAME model name (ATLAS_WHISPER, base.en) pinned to CPU int8.
+    stt_lock = threading.Lock()
+    stt_box = {"model": None}
+
+    def stt_model():
+        with stt_lock:
+            if stt_box["model"] is None:
+                from faster_whisper import WhisperModel
+                stt_box["model"] = WhisperModel(os.environ.get("ATLAS_WHISPER", "base.en"), device="cpu", compute_type="int8",
+                                                cpu_threads=4)
+                LOG.info("voice: faster-whisper %s loaded on CPU int8", os.environ.get("ATLAS_WHISPER", "base.en"))
+            return stt_box["model"]
+
+    # ------------------------------------------------------------------ intent routing
+    cad_verbs = re.compile(r"\b(make|build|design|create|model|generate|draw up|cad|machine|3d[- ]?print)\b", re.I)
+    cad_strong = re.compile(
+        r"^\W*(?:(?:hey\s+)?atlas\W+)?(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?(?:go\s+ahead\s+and\s+)?"
+        r"(?:make|build|design|create|model|generate|draw up)\s+(?:me\s+|us\s+)?(?:a|an|the|some|my|one|two|three|\d+)\b", re.I)
+    question_start = re.compile(r"^\W*(?:what|how|why|when|where|who|which|is|are|do|does|did|tell me|explain)\b", re.I)
+
+    async def wants_cad(text: str) -> bool:
+        """Rule first (a 'make me a ...' request), LLM tie-break only when a CAD verb is present but the shape is
+        ambiguous. Anything else is conversation and goes down the /atlas/ask path."""
+        if cad_strong.search(text):
+            return True
+        if question_start.search(text) or not cad_verbs.search(text):
+            return False
+        reply = await srv._chat(
+            [{"role": "system", "content": "Answer yes or no only. Is the user asking for a physical part or object to be "
+                                           "designed or modelled in CAD?"},
+             {"role": "user", "content": text}], max_tokens=4, timeout_s=8)
+        return bool(reply) and reply.strip().lower().startswith("y")
+
+    # ------------------------------------------------------------------ TTS proxy
+    @app.post("/atlas/speak", dependencies=[Depends(srv.require_token)])
+    async def speak(req: SpeakReq):
+        text = (req.text or "").strip()[:600]
+        if not text:
+            raise HTTPException(status_code=400, detail="empty text")
+        try:
+            async with httpx.AsyncClient(timeout=40) as client:
+                r = await client.post(f"{KOKORO_URL}/audio/speech", json={
+                    "model": "kokoro", "input": text, "voice": req.voice or KOKORO_VOICE, "response_format": "mp3"})
+                r.raise_for_status()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"TTS unavailable: {type(e).__name__}")
+        return Response(content=r.content, media_type="audio/mpeg")
+
+    # ------------------------------------------------------------------ CAD jobs
+    cad_gate = asyncio.Semaphore(1)
+    tasks: set = set()
+
+    def job_path(job_id: str) -> Path:
+        return JOB_DIR / job_id
+
+    def read_job(job_id: str) -> Optional[dict]:
+        if not JOB_ID_RE.match(job_id):
+            return None
+        try:
+            return json.loads((job_path(job_id) / "job.json").read_text())
+        except Exception:
+            return None
+
+    def write_job(job: dict, **kv) -> None:
+        job.update(kv, updated=int(time.time()))
+        (job_path(job["job_id"]) / "job.json").write_text(json.dumps(job, indent=2))
+
+    def new_job(prompt: str) -> dict:
+        job_id = uuid.uuid4().hex[:10]
+        job_path(job_id).mkdir(parents=True, exist_ok=True)
+        job = {"job_id": job_id, "status": "queued", "stage": "queued", "prompt": prompt, "name": None, "error": None,
+               "attempts": 0, "created": int(time.time())}
+        write_job(job)
+        t = asyncio.get_event_loop().create_task(run_job(job))
+        tasks.add(t)
+        t.add_done_callback(tasks.discard)
+        return job
+
+    GEN_RULES = """You write one build123d Python script for a 3D-printable part. Output ONLY a single ```python code block.
+
+Contract (the runner imports your file and calls build()):
+  from build123d import *
+  NAME = "Phone Stand"                      # short human name
+  def build():                              # returns {PascalCaseName: Shape}, one valid solid per part
+      ...
+Frame: millimetres, Z up, the model SITS ON z=0 and is centred on x=y=0. The user speaks inches: define IN = 25.4 and
+write dimensions as inches*IN. If the user gives no size, pick a sensible real-world one.
+An assembly = several NAMED parts (BasePlate, Arm, ...). A single object = one part, or a few meaningful named parts.
+Optional module-level: ALLOW_OVERLAP = {("Pin","Arm")} for parts that legitimately interpenetrate, and
+PRINT_UP = {"Arm": (0,1,0)} to state a print orientation (default is +Z, as modelled).
+
+Quality standard (every item is machine-checked; a failure is sent back to you):
+- real manufacturing wall thickness: minimum 1.2 mm everywhere (hard floor 0.8 mm); fit tolerance 0.3 mm clearance
+  on pivots/pins/slots; no knife edges; each part exactly ONE watertight valid solid (fuse pieces with +);
+- designed to print: flat faces on the bed, avoid steep overhangs, chamfer or fillet visible edges (try/except around
+  fillet/chamfer and fall back to the plain solid) so it looks like a product, not a placeholder;
+- parts must not overlap each other (leave 0.3 mm clearance or declare ALLOW_OVERLAP).
+build123d idioms: Box(l, w, h, align=(Align.CENTER, Align.CENTER, Align.MIN)); Cylinder(radius, height);
+Pos(x,y,z) * shape; Rot(X=..,Y=..,Z=..) * shape; shape - cutter; shape + other; fillet(shape.edges(), r);
+chamfer(shape.edges(), d); shape.bounding_box(); shape.is_valid is a PROPERTY. Use plain solids (no sketches left open).
+No file I/O, no prints needed, no network. Do not export anything: the runner does that."""
+
+    EXAMPLE = '''```python
+from build123d import *
+IN = 25.4
+NAME = "Phone Stand"
+
+def soft(shape, r):
+    try:
+        out = fillet(shape.edges(), r)
+        return out if out.is_valid and out.volume > 0 else shape
+    except Exception:
+        return shape
+
+def build():
+    base = soft(Box(3.0 * IN, 3.0 * IN, 0.25 * IN, align=(Align.CENTER, Align.CENTER, Align.MIN)), 2.0)
+    back = Pos(0, 1.1 * IN, 0.25 * IN) * Rot(X=-15) * Box(2.6 * IN, 0.25 * IN, 3.0 * IN, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    lip = Pos(0, -0.9 * IN, 0.25 * IN) * Box(2.6 * IN, 0.3 * IN, 0.4 * IN, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    return {"BasePlate": base, "BackRest": soft(back, 1.5), "FrontLip": soft(lip, 1.0)}
+
+ALLOW_OVERLAP = {("BasePlate", "BackRest"), ("BasePlate", "FrontLip")}
+```'''
+
+    async def run_proc(*argv, stdin: Optional[str] = None, timeout: float = 120.0) -> tuple[int, str, str]:
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(stdin.encode() if stdin is not None else None), timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return -9, "", "timed out"
+        return proc.returncode or 0, out.decode(errors="ignore"), err.decode(errors="ignore")
+
+    def extract_code(text: str) -> Optional[str]:
+        m = re.findall(r"```(?:python)?\s*\n(.*?)```", text, re.S)
+        if m:
+            return max(m, key=len).strip() + "\n"
+        return text.strip() + "\n" if "def build" in text else None
+
+    async def write_code(prompt: str, prev_code: Optional[str], error: Optional[str]) -> tuple[Optional[str], str]:
+        """Claude Code (headless, no tools) writes the script; Hermes is the fallback writer. Returns (code, writer)."""
+        user = f"{GEN_RULES}\n\nExample of the exact shape of a good answer:\n{EXAMPLE}\n\nRequest from the user: {prompt}\n"
+        if prev_code and error:
+            user += (f"\nYour previous script failed the runner. Fix it and return the complete corrected script.\n"
+                     f"Previous script:\n```python\n{prev_code}```\nRunner output:\n{error[-3000:]}\n")
+        rc, out, err = await run_proc(CLAUDE_BIN, "-p", "--tools", "", "--output-format", "text", stdin=user, timeout=240)
+        code = extract_code(out) if rc == 0 else None
+        if code:
+            return code, "claude-code"
+        LOG.warning("voice-cad: claude -p gave no code (rc=%s %s); falling back to Hermes", rc, err[-200:])
+        try:
+            h_out = await srv._run_hermes_oneshot(user)
+            code = extract_code(h_out)
+            if code:
+                return code, "hermes"
+        except HTTPException as e:
+            LOG.warning("voice-cad: hermes fallback failed: %s", e.detail)
+        return None, "none"
+
+    def win(p: str) -> str:
+        return f"{srv.ATHENA_HOST}:/{p}"
+
+    async def run_job(job: dict) -> None:
+        jid = job["job_id"]
+        async with cad_gate:
+            code, error = None, None
+            try:
+                for attempt in range(1, CAD_ATTEMPTS + 1):
+                    write_job(job, status="working", stage="writing" if attempt == 1 else "repairing", attempts=attempt)
+                    code, writer = await write_code(job["prompt"], code, error)
+                    if not code:
+                        raise RuntimeError("no code writer answered")
+                    local = job_path(jid) / "job.py"
+                    local.write_text(code)
+                    write_job(job, stage="building")
+                    rc, _, err = await run_proc("scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", str(local),
+                                                win(f"{ATHENA_WORK_WIN}/scripts/voicecad/job_{jid}.py"), timeout=60)
+                    if rc != 0:
+                        raise RuntimeError(f"upload to Athena failed: {err[-200:]}")
+                    code_rc, out, _ = await srv._run_athena_ssh(
+                        f"docker exec {ATHENA_CONTAINER} python /work/scripts/voicecad/run_job.py {jid}", 300)
+                    (job_path(jid) / f"attempt{attempt}.log").write_text(out)
+                    result = None
+                    for line in reversed(out.splitlines()):
+                        if line.startswith("RESULT "):
+                            result = json.loads(line[7:])
+                            break
+                    if result and result.get("ok"):
+                        write_job(job, stage="fetching")
+                        for fname in ("model.glb", "manifest.json", "model.step", "report.txt", "source.py"):
+                            rc, _, err = await run_proc("scp", "-q", "-o", "BatchMode=yes", win(f"{ATHENA_WORK_WIN}/out/voicecad/{jid}/{fname}"),
+                                                        str(job_path(jid) / fname), timeout=90)
+                            if rc != 0 and fname in ("model.glb", "manifest.json"):
+                                raise RuntimeError(f"fetching {fname} failed: {err[-200:]}")
+                        manifest = json.loads((job_path(jid) / "manifest.json").read_text())
+                        write_job(job, status="done", stage="done", name=manifest.get("name"), error=None)
+                        LOG.info("voice-cad: job %s done '%s' via %s in %d attempt(s)", jid, manifest.get("name"), writer, attempt)
+                        return
+                    error = out if out.strip() else f"runner exited {code_rc} with no output"
+                raise RuntimeError("failed acceptance after %d attempts: %s" % (CAD_ATTEMPTS, error[-300:]))
+            except Exception as e:
+                LOG.warning("voice-cad: job %s failed: %s", jid, e)
+                write_job(job, status="failed", stage="failed", error=str(e)[:400])
+
+    @app.post("/atlas/cad-job", dependencies=[Depends(srv.require_token)])
+    async def cad_job_create(req: CadJobReq):
+        prompt = (req.prompt or "").strip()
+        if len(prompt) < 4:
+            raise HTTPException(status_code=400, detail="prompt too short")
+        job = new_job(prompt[:600])
+        srv.log(srv.LogEntry(speaker="atlas", text=f"[cad-job {job['job_id']}] queued: {prompt[:200]}", device="holodeck"))
+        return {"job_id": job["job_id"], "status": job["status"]}
+
+    @app.get("/atlas/cad-job/{job_id}", dependencies=[Depends(srv.require_token)])
+    async def cad_job_status(job_id: str):
+        job = read_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="no such job")
+        out = {k: job.get(k) for k in CAD_ATTRS}
+        if job["status"] == "done":
+            out["manifest"] = json.loads((job_path(job_id) / "manifest.json").read_text())
+            out["model_bytes"] = (job_path(job_id) / "model.glb").stat().st_size
+        return out
+
+    @app.get("/atlas/cad-job/{job_id}/model", dependencies=[Depends(srv.require_token)])
+    async def cad_job_model(job_id: str):
+        f = job_path(job_id) / "model.glb" if JOB_ID_RE.match(job_id) else None
+        if not f or not f.exists():
+            raise HTTPException(status_code=404, detail="model not ready")
+        return FileResponse(f, media_type="model/gltf-binary", filename=f"{job_id}.glb")
+
+    @app.get("/atlas/voice-status", dependencies=[Depends(srv.require_token)])
+    async def voice_status():
+        sp = await asyncio.to_thread(spotter)
+        return {"kws": sp is not None, "kws_error": kws_box["error"], "kokoro": KOKORO_URL, "athena_container": ATHENA_CONTAINER,
+                "jobs": len(list(JOB_DIR.glob("*/job.json"))) if JOB_DIR.exists() else 0}
+
+    # ------------------------------------------------------------------ the voice socket
+    class Session:
+        def __init__(self, ws: WebSocket):
+            self.ws = ws
+            self.sid = uuid.uuid4().hex[:6]
+            self.kws = None
+            self.kws_stream = None
+            self.state = "idle"             # idle | wake | ptt | busy
+            self.source = ""
+            self.buf: list = []             # float32 chunks of the utterance being captured
+            self.preroll: collections.deque = collections.deque()
+            self.preroll_n = 0
+            self.noise = 0.004              # adaptive noise floor (RMS, full scale 1.0)
+            self.t = 0.0                    # audio clock (seconds of audio received)
+            self.wake_t = 0.0
+            self.speech_t = 0.0             # voiced audio accumulated since the grace window
+            self.last_voiced_t = 0.0
+            self.cap_start_t = 0.0
+            self.followups = 0
+
+        async def send(self, **ev) -> None:
+            try:
+                await self.ws.send_text(json.dumps(ev))
+            except Exception:
+                pass
+
+        def note(self, speaker: str, text: str) -> None:
+            LOG.info("voice[%s] %s: %s", self.sid, speaker, text[:200])
+            try:
+                srv.log(srv.LogEntry(speaker=speaker, text=f"[voice:{self.source or 'ptt'}] {text}", device="holodeck"))
+            except Exception as e:
+                LOG.warning("voice log failed: %s", e)
+
+        async def start(self) -> None:
+            self.kws = await asyncio.to_thread(spotter)
+            if self.kws:
+                self.kws_stream = self.kws.create_stream()
+            await self.send(event="ready", wake=bool(self.kws), ptt=True, session=self.sid)
+            LOG.info("voice[%s] session open (wake spotter %s)", self.sid, "on" if self.kws else "OFF - PTT only")
+
+        def rms_voiced(self, x: np.ndarray) -> bool:
+            level = float(np.sqrt(np.mean(x * x))) if len(x) else 0.0
+            voiced = level > max(0.012, self.noise * 3.5)
+            if not voiced:
+                self.noise = 0.95 * self.noise + 0.05 * min(level, 0.05)
+            return voiced
+
+        def begin_capture(self, source: str) -> None:
+            self.source = source
+            self.buf = [c for c in self.preroll]
+            self.cap_start_t = self.t - self.preroll_n / SR
+            self.speech_t = 0.0
+            self.last_voiced_t = self.t
+
+        def reset_kws(self) -> None:
+            if self.kws:
+                self.kws_stream = self.kws.create_stream()
+            self.preroll.clear()
+            self.preroll_n = 0
+
+        async def on_audio(self, pcm: bytes) -> None:
+            if self.state == "busy" or len(pcm) < 2:
+                return
+            x = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768.0
+            dur = len(x) / SR
+            self.t += dur
+            if self.state == "idle":
+                self.preroll.append(x)
+                self.preroll_n += len(x)
+                while self.preroll_n > CHUNK_PREROLL_S * SR and len(self.preroll) > 1:
+                    self.preroll_n -= len(self.preroll.popleft())
+                self.rms_voiced(x)
+                if self.kws and self.kws_stream is not None:
+                    hit = await asyncio.to_thread(self.spot, x)
+                    if hit:
+                        self.wake_t = self.t
+                        self.begin_capture("wake")
+                        self.state = "wake"
+                        self.note("jon", f"(wake word '{hit}')")
+                        await self.send(event="wake", source="wake", keyword=hit)
+                return
+            self.buf.append(x)
+            if self.state == "ptt":
+                if self.t - self.cap_start_t > MAX_PTT_S:
+                    await self.finish("ptt-cap")
+                return
+            # state == wake: VAD end-pointing. Silence is counted from the last voiced audio, starting at the wake itself:
+            # the spotter fires late (mid-sentence for a fluent "Atlas, make me ..."), so the request is often already
+            # under way; a bare "Atlas ... [pause]" ends with an empty transcript and the follow-up re-arm below.
+            voiced = self.rms_voiced(x)
+            if DEBUG and int(self.t * 10) != int((self.t - dur) * 10):
+                LOG.info("voice[%s] dbg t=%.2f wake_t=%.2f speech=%.2f last_voiced=%.2f voiced=%s noise=%.4f", self.sid, self.t, self.wake_t, self.speech_t, self.last_voiced_t, voiced, self.noise)
+            if voiced:
+                self.speech_t += dur
+                self.last_voiced_t = self.t
+            if self.t - self.last_voiced_t >= END_SILENCE_S:
+                await self.finish("silence")
+            elif self.speech_t <= 0.0 and self.t - self.wake_t >= NO_SPEECH_S:
+                self.state = "idle"
+                self.reset_kws()
+                await self.send(event="idle", reason="no_speech")
+            elif self.t - self.cap_start_t > MAX_UTTERANCE_S:
+                await self.finish("max-length")
+
+        def spot(self, x: np.ndarray) -> str:
+            s = self.kws_stream
+            s.accept_waveform(SR, x)
+            hit = ""
+            while self.kws.is_ready(s):
+                self.kws.decode_stream(s)
+                r = self.kws.get_result(s)
+                if r:
+                    hit = r
+                    self.kws.reset_stream(s)
+            return hit
+
+        async def ptt_start(self) -> None:
+            if self.state == "busy":
+                return
+            self.begin_capture("ptt")
+            self.buf = self.buf[-2:]        # a short lead-in only; the hand-held trigger marks the start
+            self.state = "ptt"
+            self.note("jon", "(push-to-talk start)")
+            await self.send(event="wake", source="ptt")
+
+        async def finish(self, why: str) -> None:
+            if self.state not in ("wake", "ptt"):
+                return
+            source = self.source
+            audio = np.concatenate(self.buf) if self.buf else np.zeros(0, np.float32)
+            self.buf = []
+            self.state = "busy"
+            await self.send(event="utterance_end", why=why, seconds=round(len(audio) / SR, 2))
+            rearmed = False
+            try:
+                text = await asyncio.to_thread(self.transcribe, audio)
+                text = re.sub(r"^\W*(?:hey[\s,]+)?atlas\W*", "", text, flags=re.I).strip() if source == "wake" else text
+                await self.send(event="transcript", text=text)
+                if not text:
+                    if source == "wake" and self.followups < 1:     # just the wake word said; the request is still coming
+                        self.followups += 1
+                        self.begin_capture("wake")
+                        self.wake_t = self.t
+                        self.state = "wake"
+                        rearmed = True
+                        await self.send(event="wake", source="wake", followup=True)
+                        return
+                    self.followups = 0
+                    self.state = "idle"
+                    self.reset_kws()
+                    await self.send(event="idle", reason="empty")
+                    return
+                self.followups = 0
+                self.note("jon", text)
+                await self.route(text)
+            except Exception as e:
+                LOG.exception("voice[%s] pipeline error", self.sid)
+                await self.send(event="error", detail=f"{type(e).__name__}")
+            finally:
+                if not rearmed:
+                    self.state = "idle"
+                    self.reset_kws()
+                    await self.send(event="idle", reason="done")
+
+        def transcribe(self, audio: np.ndarray) -> str:
+            if len(audio) < SR * 0.3:
+                return ""
+            segments, _ = stt_model().transcribe(audio, language="en", vad_filter=True)   # same call shape as /atlas/transcribe
+            return " ".join(seg.text.strip() for seg in segments).strip()
+
+        async def route(self, text: str) -> None:
+            if await wants_cad(text):
+                job = new_job(text)
+                reply = "On it. I'm designing that now, give me about a minute."
+                self.note("atlas", f"{reply} (cad-job {job['job_id']})")
+                await self.send(event="cad_job", job_id=job["job_id"], text=reply)
+                await self.send(event="reply", text=reply, kind="cad_ack")
+                t = asyncio.get_event_loop().create_task(self.watch_job(job["job_id"]))
+                tasks.add(t)
+                t.add_done_callback(tasks.discard)
+                return
+            try:
+                ans = await asyncio.wait_for(srv.ask(srv.Ask(question=text)), ASK_BUDGET_S)   # the same ask path as POST /atlas/ask
+                reply, kind = ans["answer"], "answer"
+            except asyncio.TimeoutError:
+                reply, kind = "My brain is taking too long on that one. Give me a moment and ask me again.", "timeout"
+                LOG.warning("voice[%s] ask path exceeded %.0f s budget", self.sid, ASK_BUDGET_S)
+            self.note("atlas", reply)
+            await self.send(event="reply", text=reply, kind=kind)
+
+        async def watch_job(self, job_id: str) -> None:
+            while True:
+                await asyncio.sleep(2.0)
+                job = read_job(job_id)
+                if not job:
+                    return
+                if job["status"] == "done":
+                    man = json.loads((job_path(job_id) / "manifest.json").read_text())
+                    self.note("atlas", f"cad-job {job_id} done: {man.get('name')} {man.get('true_dims_in')}")
+                    await self.send(event="cad_done", job_id=job_id, name=man.get("name"), dims_in=man.get("true_dims_in"),
+                                    parts=[p["name"] for p in man.get("parts", [])])
+                    return
+                if job["status"] == "failed":
+                    self.note("atlas", f"cad-job {job_id} failed: {job.get('error')}")
+                    await self.send(event="cad_failed", job_id=job_id, detail=job.get("error"))
+                    return
+
+    @app.websocket("/atlas/voice-stream")
+    async def voice_stream(ws: WebSocket):
+        if not auth_ok(ws.headers.get("authorization")):
+            await ws.close(code=1008)
+            return
+        await ws.accept()
+        s = Session(ws)
+        await s.start()
+        try:
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    break
+                if msg.get("bytes") is not None:
+                    await s.on_audio(msg["bytes"])
+                elif msg.get("text") is not None:
+                    try:
+                        ev = json.loads(msg["text"]).get("event")
+                    except Exception:
+                        continue
+                    if ev == "ptt_start":
+                        await s.ptt_start()
+                    elif ev == "ptt_end":
+                        await s.finish("ptt-end")
+                    elif ev == "ping":
+                        await s.send(event="pong")
+        except Exception as e:
+            LOG.info("voice[%s] socket closed: %s", s.sid, type(e).__name__)
+        finally:
+            LOG.info("voice[%s] session closed", s.sid)

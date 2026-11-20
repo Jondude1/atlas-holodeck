@@ -63,3 +63,21 @@ static func _status_ok(host: Node, base: String) -> bool:
 	var res: Array = await http.request_completed
 	http.queue_free()
 	return res[0] == HTTPRequest.RESULT_SUCCESS and res[1] >= 200 and res[1] < 300
+
+## POST a JSON body to a token-gated hub route -> {ok, code, body}. `ok` is HTTP 2xx; body is the parsed JSON (or {}).
+static func post_json(host: Node, path: String, payload: Dictionary) -> Dictionary:
+	if base_url == "":
+		return {"ok": false, "code": 0, "body": {}}
+	var http := HTTPRequest.new()
+	http.timeout = 20.0
+	host.add_child(http)
+	var err := http.request(base_url + path, auth_headers(PackedStringArray(["Content-Type: application/json"])),
+			HTTPClient.METHOD_POST, JSON.stringify(payload))
+	if err != OK:
+		http.queue_free()
+		return {"ok": false, "code": 0, "body": {}}
+	var res: Array = await http.request_completed
+	http.queue_free()
+	var parsed: Variant = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+	return {"ok": res[0] == HTTPRequest.RESULT_SUCCESS and res[1] >= 200 and res[1] < 300, "code": res[1],
+			"body": parsed if parsed is Dictionary else {}}
