@@ -18,9 +18,21 @@ const OPEN_X0 := -2.9                  # Round 6: the opening spans the BACK wal
 const OPEN_X1 := 2.9
 const OPEN_TOP := 2.9                  # opening head height (header above)
 const TERRACE_Z := -8.3                # terrace floor outer edge, beyond the back wall
+const TEX_WALL: Texture2D = preload("res://textures/wall-concrete.png")   # R7-0: photographic surfaces read real; flat tints read CG
+const TEX_FLOOR: Texture2D = preload("res://textures/floor-stone.png")
+var _wall_mat_cache: StandardMaterial3D = null
+
+## One shared LIT concrete material for every wall — walls now sit in the room's
+## lighting instead of glowing flat like the old unshaded procedural panels.
+func _wall_mat() -> StandardMaterial3D:
+	if _wall_mat_cache == null:
+		_wall_mat_cache = _lit(Color(0.62, 0.64, 0.68), 0.05, 0.9, TEX_WALL)
+		_wall_mat_cache.uv1_scale = Vector3(2.5, 1.0, 1.0)
+		_wall_mat_cache.texture_repeat = true
+	return _wall_mat_cache
 const PPM := 128               # wall texture pixels per metre
-const STRIP_ENERGY := 0.8    # v2 look pass: accent lines whisper (was 1.3)
-const COVE_ENERGY := 0.85   # v2 look pass (was 1.4)
+const STRIP_ENERGY := 0.55    # v2 look pass: accent lines whisper (was 1.3)
+const COVE_ENERGY := 0.6   # v2 look pass (was 1.4)
 const POOL_ALPHA := 0.35    # v2 look pass (was 0.55)
 const SHADOW_ALPHA := 0.85
 const HALO_ALPHA := 0.12    # v2 look pass (was 0.22)
@@ -126,8 +138,9 @@ func _build_floor(table_xz: Vector2) -> void:
 	plane.size = Vector2(HALF_X * 2.0, Z_FRONT - Z_BACK)
 	# the texture carries the tone (dark blue-rich plate, seams + scuffs); the tint stays near white so the two don't
 	# multiply into black (brief #12: darker and richer than #8, never black)
-	var mat := _lit(Color(0.33, 0.39, 0.47), 0.25, 0.5, _floor_texture())   # v2 look pass: satin dark floor (metallic down, roughness up)           # glossy: the rig and table light streak across it
-	mat.uv1_scale = Vector3(HALF_X * 2.0, Z_FRONT - Z_BACK, 1.0)
+	var mat := _lit(Color(0.85, 0.88, 0.92), 0.1, 0.42, TEX_FLOOR)   # R7-0: photographic basalt tiles
+	mat.uv1_scale = Vector3(3.0, 3.0, 1.0)
+	mat.texture_repeat = true
 	_mesh("Floor", plane, mat, Vector3(0, 0, (Z_FRONT + Z_BACK) * 0.5))
 
 	# soft glow pool spilling past the slab, then the contact shadow under it
@@ -184,11 +197,11 @@ func _build_walls() -> void:
 	var y := HEIGHT * 0.5
 	var right_z := -3.2
 	var right_px: Array[int] = [int((right_z - Z_BACK) * PPM)]  # right wall: texture u runs -Z -> +Z
-	_mesh("WallFront", _quad(size), _unshaded_tex(_wall_texture(false, 23, [])), Vector3(0, y, Z_FRONT), Vector3(0, 180, 0))
+	_mesh("WallFront", _quad(size), _wall_mat(), Vector3(0, y, Z_FRONT), Vector3(0, 180, 0))
 	var side := Vector2(Z_FRONT - Z_BACK, HEIGHT)
 	# R6: plain panels on the right wall too — the shelf silhouettes read as clutter
-	_mesh("WallRight", _quad(side), _unshaded_tex(_wall_texture(false, 41, right_px)), Vector3(HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, -90, 0))
-	_mesh("WallLeft", _quad(side), _unshaded_tex(_wall_texture(false, 37, [])), Vector3(-HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, 90, 0))
+	_mesh("WallRight", _quad(side), _wall_mat(), Vector3(HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, -90, 0))
+	_mesh("WallLeft", _quad(side), _wall_mat(), Vector3(-HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, 90, 0))
 	_build_opening()
 	_lab_strip(Vector3(HALF_X - 0.016, 1.5, right_z), Vector3(0.03, 1.2, 0.03))
 
@@ -197,7 +210,7 @@ func _build_walls() -> void:
 ## walk-in picture's composition. Segments share one wall material so the panelling
 ## reads continuous; frame, railing and trim merge into the lab's builders.
 func _build_opening() -> void:
-	var mat := _unshaded_tex(_wall_texture(false, 11, []))
+	var mat := _wall_mat()
 	_mesh("WallBackLeft", _wall_segment_back(-HALF_X, OPEN_X0, 0.0, HEIGHT), mat, Vector3.ZERO)
 	_mesh("WallBackRight", _wall_segment_back(OPEN_X1, HALF_X, 0.0, HEIGHT), mat, Vector3.ZERO)
 	_mesh("WallBackHeader", _wall_segment_back(OPEN_X0, OPEN_X1, OPEN_TOP, HEIGHT), mat, Vector3.ZERO)
@@ -214,8 +227,9 @@ func _build_opening() -> void:
 		_lab.emi.add_box(Vector3(jx, OPEN_TOP * 0.5, Z_BACK + 0.12), Vector3(0.025, OPEN_TOP - 0.06, 0.025), line * 0.5)
 	_lab.emi.add_box(Vector3(0, OPEN_TOP - 0.04, Z_BACK + 0.12), Vector3(OPEN_X1 - OPEN_X0 - 0.2, 0.025, 0.025), line * 0.5)
 	# terrace floor: the room's plate extended past the wall line to the railing
-	var tmat := _lit(Color(0.45, 0.52, 0.62), 0.3, 0.5, _floor_texture())
-	tmat.uv1_scale = Vector3(HALF_X * 2.0, Z_BACK - TERRACE_Z, 1.0)
+	var tmat := _lit(Color(0.8, 0.83, 0.88), 0.1, 0.45, TEX_FLOOR)
+	tmat.uv1_scale = Vector3(3.0, 1.2, 1.0)
+	tmat.texture_repeat = true
 	var terrace := PlaneMesh.new()
 	terrace.size = Vector2(HALF_X * 2.0, Z_BACK - TERRACE_Z)
 	_mesh("Terrace", terrace, tmat, Vector3(0, -0.005, (Z_BACK + TERRACE_Z) * 0.5))

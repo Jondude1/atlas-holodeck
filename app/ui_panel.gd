@@ -495,6 +495,8 @@ func bind_print(pf: PrintFlow) -> void:
 func _on_print_state(s: int) -> void:
 	poke(3.0)
 	_card.visible = s != PrintFlow.S.IDLE
+	if _card.visible:
+		get_tree().call_group("holodeck_main", "show_chrome")
 	_card_confirm.visible = s == PrintFlow.S.CONFIRMING or s == PrintFlow.S.SUBMITTING
 	_card_confirm.disabled = s == PrintFlow.S.SUBMITTING
 	_card_cancel.text = "CANCEL" if s == PrintFlow.S.CONFIRMING else "DISMISS"
@@ -686,6 +688,7 @@ func request_library_delete(entry: Dictionary) -> void:
 	_lib_confirm.visible = true
 	_lib_cancel.text = "CANCEL"
 	_lib_card.visible = true
+	get_tree().call_group("holodeck_main", "show_chrome")
 
 func cancel_library_delete() -> void:
 	poke()

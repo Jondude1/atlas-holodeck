@@ -74,6 +74,9 @@ func _on_pressed(action: String) -> void:
 				v.ptt_begin()
 
 func _on_released(action: String) -> void:
+	if action == "by_button" and not pointer:
+		# left Y: summon / dismiss the floating UI (the clean-space toggle)
+		get_tree().call_group("holodeck_main", "toggle_chrome")
 	if action == "menu_button":
 		# a TAP (released before the long-press fired) resets the model; the long-press is the floor-height fix
 		if _menu_down_ms >= 0 and not pointer:

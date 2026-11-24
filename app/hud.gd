@@ -86,8 +86,10 @@ var _fade := 1.0
 var _clock: Label3D
 var _link: Label3D
 var _gauge_mat: ShaderMaterial
+var _gauge_mi: MeshInstance3D
 var _gauge_pct: Label3D
 var _card_text: Label3D
+var _card_mi: MeshInstance3D
 var _arc_mats: Array[ShaderMaterial] = []
 var _arcs: Array[MeshInstance3D] = []
 var _frame_mats: Array[StandardMaterial3D] = []
@@ -317,6 +319,7 @@ func _build_gauge() -> void:
 	q.size = Vector2.ONE * GAUGE_SIZE
 	var mi := MeshInstance3D.new()
 	mi.name = "ExplodeGauge"
+	_gauge_mi = mi
 	mi.mesh = q
 	mi.material_override = _gauge_mat
 	# sits inside the left arc frame, same yaw
@@ -326,6 +329,16 @@ func _build_gauge() -> void:
 	_gauge_pct = _label("0%", 80, Tokens.HOLO_CORE, Vector3(0, 0.02, 0.003), mi)
 	_label("EXPLODE", 36, Tokens.HOLO_LINE, Vector3(0, -0.05, 0.003), mi)
 
+## Clean-space mode (Jon, 2026-11-24): the arc dials and the explode gauge hide with
+## the rest of the floating UI; the status strip stays — it is the clock + link readout.
+func set_chrome(v: bool) -> void:
+	for a in _arcs:
+		a.visible = v
+	if _gauge_mi:
+		_gauge_mi.visible = v
+	if _card_mi:
+		_card_mi.visible = v
+
 func _build_card() -> void:
 	var panel := get_node_or_null("../UIPanel") as Node3D
 	var xf := Transform3D(Basis.IDENTITY, Vector3(1.55, 1.35, -1.15))
@@ -333,6 +346,7 @@ func _build_card() -> void:
 		xf = Transform3D(panel.transform.basis.orthonormalized(), panel.transform.origin)
 	xf.origin += xf.basis * Vector3(0, -CARD_DROP, 0)
 	var card := _frame_quad("StatusCard", CARD_SIZE, Vector2i(320, 272), xf)
+	_card_mi = card
 	_label("STATUS", 40, Tokens.HOLO_CORE, Vector3(-CARD_SIZE.x * 0.5 + 0.03, CARD_SIZE.y * 0.5 - 0.04, 0.002), card).horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_card_text = _label("", 36, Tokens.HOLO_LINE, Vector3(-CARD_SIZE.x * 0.5 + 0.03, CARD_SIZE.y * 0.5 - 0.075, 0.002), card)
 	_card_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT

@@ -16,6 +16,12 @@ func _run() -> void:
 	main.call("_skip_boot")
 	if args.size() > 7:
 		main.get_node("VistaDeck").call("show_vista", String(args[7]))
+	if args.size() > 8:
+		var deck: Node = main.get_node("VistaDeck")
+		for i in 3:
+			if String(deck.call("grade")) == String(args[8]):
+				break
+			deck.call("cycle_grade")
 		await create_timer(1.1).timeout
 	var cam := Camera3D.new()
 	cam.fov = 62.0

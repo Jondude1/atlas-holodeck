@@ -41,19 +41,35 @@ static func auth_headers(extra: PackedStringArray = PackedStringArray()) -> Pack
 static func ws_url() -> String:
 	return base_url.replace("http://", "ws://").replace("https://", "wss://") + "/atlas/voice-stream"
 
-## LAN first, then tailnet. Sets base_url / link / brain on success (real values only). Never errors; false = local only.
+## Race every candidate at once; the first success wins, checked in list order each
+## frame so the LAN still wins at home (it answers in milliseconds). Away from home
+## the LAN address simply never answers, and the tailnet reply connects the app
+## without waiting out the LAN timeout first — the travel case (Jon, 2026-11-24):
+## Tailscale on the headset + any WiFi = the full Holodeck, hub and CAD included.
+## Sets base_url / link / brain on success (real values only). Never errors.
 static func probe(host: Node) -> bool:
 	var labels := ["LAN", "TAILNET"]
 	var cands := candidates()
+	var results := {}
 	for i in cands.size():
-		if await _status_ok(host, cands[i]):
-			base_url = cands[i]
-			link = labels[mini(i, 1)]
-			brain = await _fetch_brain(host, cands[i])
-			return true
+		_probe_one(host, cands[i], i, results)
+	var deadline := Time.get_ticks_msec() + 6000
+	while Time.get_ticks_msec() < deadline:
+		for i in cands.size():
+			if bool(results.get(i, false)):
+				base_url = cands[i]
+				link = labels[mini(i, 1)]
+				brain = await _fetch_brain(host, cands[i])
+				return true
+		if results.size() >= cands.size():
+			break   # every candidate answered; nobody home
+		await host.get_tree().process_frame
 	link = "LOCAL ONLY"
 	brain = "OFFLINE"
 	return false
+
+static func _probe_one(host: Node, url: String, idx: int, results: Dictionary) -> void:
+	results[idx] = await _status_ok(host, url)
 
 ## The hub's configured chat tier, straight from /atlas/voice-status.
 static func _fetch_brain(host: Node, base: String) -> String:

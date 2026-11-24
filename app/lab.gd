@@ -21,8 +21,6 @@ var _lit_mat: StandardMaterial3D
 var _emi_mat: StandardMaterial3D
 var _fx_mat: ShaderMaterial
 var _screen_mat: ShaderMaterial
-var _ring_mat: ShaderMaterial
-var _ring: MeshInstance3D
 var _fade := 1.0
 var _rng := RandomNumberGenerator.new()
 var _table_xz := Vector2.ZERO
@@ -83,6 +81,25 @@ func build(table_xz: Vector2) -> void:
 	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 1.05)
 	add_child(gloss)
 
+	# R7-0: baked contact shadows — with no realtime shadow maps (Quest budget), soft
+	# dark blobs under the furniture are what ground it; flat CG floats, this sits.
+	var sh_mat := StandardMaterial3D.new()
+	sh_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sh_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sh_mat.albedo_color = Color(0, 0, 0, 0.4)
+	sh_mat.albedo_texture = Fx.radial_texture(128, 1.6)
+	for spec in [[Vector3(table_xz.x, 0.003, table_xz.y), Vector2(3.6, 2.2)],
+			[Vector3(3.55, 0.003, -2.5), Vector2(1.5, 4.6)],
+			[Vector3(-3.55, 0.003, -2.5), Vector2(1.5, 4.6)]]:
+		var sh := MeshInstance3D.new()
+		var sp := PlaneMesh.new()
+		sp.size = spec[1]
+		sh.mesh = sp
+		sh.material_override = sh_mat
+		sh.position = spec[0]
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(sh)
+
 ## Round 6: two ring-lit display platforms flanking the FAR opening, inside the room —
 ## the suit bay, as the picture has it. (Suits arrive via the image-to-3D pipeline.)
 func _suit_platforms() -> void:
@@ -142,18 +159,6 @@ func _seal() -> void:
 	if screens.vertex_count() > 0:
 		_add_mesh("LabScreens", screens.build(), _screen_mat)
 
-	# the slow-turning holographic ring above the table (the ring HUD shader, laid flat and tilted)
-	_ring_mat = Fx.ring_material()
-	_ring_mat.set_shader_parameter("progress", 1.0)
-	_ring_mat.set_shader_parameter("arc_on", 0.0)
-	var q := QuadMesh.new()
-	q.size = Vector2.ONE * 1.5
-	_ring = MeshInstance3D.new()
-	_ring.name = "HoloRing"
-	_ring.mesh = q
-	_ring.material_override = _ring_mat
-	_ring.position = Vector3(_table_xz.x, 2.18, _table_xz.y)
-	add_child(_ring)
 	set_fade(_fade)
 
 func _add_mesh(nm: String, mesh: ArrayMesh, mat: Material) -> void:
@@ -172,14 +177,8 @@ func set_fade(v: float) -> void:
 	_emi_mat.albedo_color = Color(E_BASE * v, E_BASE * v, E_BASE * v)
 	_fx_mat.set_shader_parameter("fade", v)
 	_screen_mat.set_shader_parameter("fade", v)
-	_ring_mat.set_shader_parameter("fade", v * 0.8)
 	if _presence:
 		_presence.set_fade(v)
-
-func _process(delta: float) -> void:
-	if _ring:
-		_ring.rotate_y(deg_to_rad(7.0) * delta)
-		_ring.rotation.x = deg_to_rad(90.0) + deg_to_rad(5.0) * sin(Time.get_ticks_msec() / 1000.0 * 0.35)
 
 # ---------------------------------------------------------------- workbenches
 

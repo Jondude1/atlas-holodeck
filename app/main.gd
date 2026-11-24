@@ -16,6 +16,22 @@ const RING_DISTANCE := 1.3
 var _voice: VoiceLink
 var _bench: CadBench
 var _vista: VistaDeck
+var _chrome := true
+
+## The floating panel + HUD dials: hidden by default so the room stays a clean space.
+## Left-hand Y summons or dismisses them; a confirmation card summons them itself,
+## because a question you cannot see is a question you cannot answer.
+func toggle_chrome() -> void:
+	_chrome = not _chrome
+	_apply_chrome()
+
+func show_chrome() -> void:
+	_chrome = true
+	_apply_chrome()
+
+func _apply_chrome() -> void:
+	_hud.set_chrome(_chrome)
+	_panel.visible = _chrome
 
 var _xr_ok := false
 var _ring_mat: ShaderMaterial
@@ -30,6 +46,7 @@ var _boot_finished := false
 var _boot_tweens: Array[Tween] = []
 
 func _ready() -> void:
+	add_to_group("holodeck_main")
 	add_child(Sfx.new())
 	_apply_tokens()
 	# XR startup lives in the XrBoot autoload (retries ~5 s, logs session signals, and
@@ -152,6 +169,8 @@ func _finish_boot() -> void:
 		return
 	_boot_finished = true
 	Sfx.start_hum(self)
+	_chrome = false   # clean space by default (Jon, 2026-11-24): panel + dials summon on demand
+	_apply_chrome()
 	_booting = false
 	_on_boot_complete()
 
