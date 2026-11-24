@@ -282,11 +282,26 @@ func _bundled_demo_swap() -> void:
 	var m := Node3D.new()
 	m.set_script(preload("res://cad_model.gd"))
 	m.name = "DemoDestroyer"
+	m.setup(bytes, manifest)   # BEFORE add_child: CadModel loads its parts in _ready()
 	_table.add_child(m)
-	m.setup(bytes, manifest)
 	if not m.load_ok:
 		m.queue_free()
 		return
 	m.position = _model.position
+	# Centre the part on the table: imported meshes carry a corner origin, unlike
+	# the authored bracket — shift so the merged part AABB centres on the table.
+	var merged := AABB()
+	var first := true
+	for p in m.get("_parts"):
+		var pa: AABB = (p as MeshInstance3D).global_transform * (p as MeshInstance3D).get_aabb()
+		if first:
+			merged = pa
+			first = false
+		else:
+			merged = merged.merge(pa)
+	if not first:
+		var c := merged.get_center()
+		m.position.x += _table.global_position.x - c.x
+		m.position.z += _table.global_position.z - c.z
 	_model.visible = false
 	_model = m

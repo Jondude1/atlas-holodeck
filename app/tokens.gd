@@ -11,6 +11,7 @@ const GRID_MINOR := Color("#1D5F8A")     # minor grid lines (use at GRID_MINOR_A
 const TABLE_SURFACE := Color("#06283F")  # table plane base (display inset)
 const TITANIUM := Color("#3B4046")       # table body: machined dark titanium (one step up from #33373D, first-contact tune)
 const TITANIUM_DARK := Color("#1A1D21")  # under-slab apron / bezel screen housing
+const TITANIUM_BODY := Color("#26292E")  # R8: table body — the Gemini target's slab reads near-black
 
 const GRID_MINOR_ALPHA := 0.35
 const PANEL_ALPHA := 0.5           # holo_deep panel fill, range 0.35-0.55

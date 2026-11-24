@@ -68,8 +68,8 @@ func build(table_xz: Vector2) -> void:
 	add_child(_arm)
 	_presence = Presence.new()
 	_presence.name = "Presence"
-	_presence.position = Vector3(-1.85, 0, -2.6)
-	_presence.scale = Vector3.ONE * 1.3   # R6 pic-pass: the picture's sphere is a large presence, ~1.1 m across
+	_presence.position = Vector3(-2.0, 0, -2.25)
+	_presence.scale = Vector3.ONE * 1.5   # R8: the Gemini target's sphere is bigger still, ~1.3 m across (R6 was 1.3)
 	add_child(_presence)
 	# R3-9: the table's edge light spills onto the floor as a soft gloss strip (fake reflection)
 	var gloss := MeshInstance3D.new()
@@ -80,6 +80,16 @@ func build(table_xz: Vector2) -> void:
 	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.09), Fx.radial_texture(128, 1.9))
 	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 1.05)
 	add_child(gloss)
+	# R8: daylight spill from the opening — a wide pale sheen on the floor inside
+	# the back wall, the target render's bright patch in front of the vista.
+	var spill := MeshInstance3D.new()
+	spill.name = "VistaSpill"
+	var spm := PlaneMesh.new()
+	spm.size = Vector2(5.6, 2.8)
+	spill.mesh = spm
+	spill.material_override = Fx.glow_decal(Color(0.75, 0.85, 0.95, 0.055), Fx.radial_texture(128, 1.7))
+	spill.position = Vector3(0, 0.005, -3.85)
+	add_child(spill)
 
 	# R7-0: baked contact shadows — with no realtime shadow maps (Quest budget), soft
 	# dark blobs under the furniture are what ground it; flat CG floats, this sits.
@@ -126,9 +136,9 @@ func _bench_slabs() -> void:
 ## Slim WHITE light bars in the dark ceiling (the picture's lighting signature) — HDR
 ## vertex colour so they bloom softly; the room's actual light stays the table's rig.
 func _ceiling_bars() -> void:
-	emi.add_box(Vector3(0, 3.36, -1.0), Vector3(0.16, 0.03, 3.6), Color(1.9, 1.9, 1.85))
+	emi.add_box(Vector3(0, 3.36, -1.0), Vector3(0.16, 0.03, 3.6), Color(1.55, 1.55, 1.5))
 	for side in [-1.0, 1.0]:
-		emi.add_box(Vector3(side * 2.3, 3.36, -1.0), Vector3(0.13, 0.03, 2.8), Color(1.5, 1.5, 1.45))
+		emi.add_box(Vector3(side * 2.3, 3.36, -1.0), Vector3(0.13, 0.03, 2.8), Color(1.2, 1.2, 1.16))
 
 func _seal() -> void:
 	_lit_mat = StandardMaterial3D.new()

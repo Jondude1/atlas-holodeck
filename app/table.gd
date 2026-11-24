@@ -100,7 +100,7 @@ func _merged(parent: Node, nm: String, mb: MeshBuilder, mat: Material) -> MeshIn
 	return mi
 
 func _build_body() -> void:
-	_ti_mat = Fx.titanium(Tokens.TITANIUM)
+	_ti_mat = Fx.titanium(Tokens.TITANIUM_BODY)
 	_apron_mat = Fx.titanium(Tokens.TITANIUM_DARK)
 	_strip_mat = Fx.pulse_material(Tokens.HOLO_LINE, EDGE_ENERGY, Vector3.RIGHT, SLAB_BODY_HALF_X * 2.0)   # pulse travels the edge
 	_trim_mat = Fx.titanium(Tokens.TITANIUM)

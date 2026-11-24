@@ -1,0 +1,20 @@
+{
+ "name": "Victory-class Star Destroyer",
+ "units": "in",
+ "true_dims_in": [
+  3.3,
+  5.54,
+  1.99
+ ],
+ "dims_note": "imported STL bounding box, decimal inches",
+ "parts": [
+  {
+   "name": "victory_class_Stardestroyer_open_doors_no_peg",
+   "dims_in": [
+    3.3,
+    5.54,
+    1.99
+   ]
+  }
+ ]
+}

@@ -79,6 +79,7 @@ var _hud: Node
 var _voice: VoiceLink
 var _active: Node3D
 var _bench: Array[Node3D] = []
+var _spawning: Dictionary = {}   # R4-7: models mid-materialize — the trimmer must never free one from under its own spawn()
 var _handled := {}
 var _t_job := 0.0
 var _print: PrintFlow
@@ -230,8 +231,11 @@ func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job 
 	if job_id != "":
 		_cache_job(job_id, glb, manifest)
 	m.call("hide_all")
+	_spawning[m] = true
 	if old:
-		return await _replace_in_place(old, m, manifest)
+		var replaced := await _replace_in_place(old, m, manifest)
+		_spawning.erase(m)
+		return replaced
 	_park_active()
 	_bench.append(m)
 	_watch(m)
@@ -247,6 +251,10 @@ func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job 
 	m.labels_beat.connect(_on_labels_beat.bind(m), CONNECT_ONE_SHOT)
 	Sfx.play(self, "materialize")
 	await m.materialize()
+	_spawning.erase(m)
+	if not is_instance_valid(m):
+		status = ""   # R4-7: freed mid-arrival (delete/trim) — never touch it again
+		return null
 	_log("materialize complete")
 	for h in get_tree().get_nodes_in_group("holodeck_hands"):
 		if h.has_method("buzz"):
@@ -291,6 +299,9 @@ func _replace_in_place(old: Node3D, m: Node3D, manifest: Dictionary) -> Node3D:
 	_voice.say(line)
 	m.labels_beat.connect(_on_labels_beat.bind(m), CONNECT_ONE_SHOT)
 	await m.materialize()
+	if not is_instance_valid(m):
+		status = ""   # R4-7: freed mid-arrival — never touch it again
+		return null
 	if was_parked:
 		m.call("park", m.position, m.scale.x)
 	spawned.emit(m)
@@ -362,7 +373,7 @@ func _trim_bench() -> void:
 	while _bench.size() > MAX_ON_BENCH:
 		var victim: Node3D = null
 		for b in _bench:
-			if b != _active and b.call("is_parked") and b.get_script() == CadModelScript:
+			if b != _active and b.call("is_parked") and b.get_script() == CadModelScript and not _spawning.has(b):
 				victim = b
 				break
 		if victim == null:

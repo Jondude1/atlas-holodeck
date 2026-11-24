@@ -40,6 +40,9 @@ var _vp: SubViewport
 var _title: Label
 var _body: Label
 var _clock: Label
+var _wave: Line2D
+var _gauge: Line2D
+var _rule: ColorRect
 var _display_mat: StandardMaterial3D
 var _pic_mat: StandardMaterial3D
 var _rim_mat: StandardMaterial3D
@@ -130,9 +133,29 @@ func _build_viewport() -> void:
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = Color(0.03, 0.07, 0.11, 1.0)
+	bg.color = Color(0.012, 0.028, 0.042, 1.0)   # R8: near-black teal, the target's display glass
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(bg)
+	# R8 framed-display dressing (all inside the viewport texture — zero 3D cost):
+	# a thin bright inner border, a waveform trace along the bottom, a ring gauge.
+	var edge := Color(0.40, 0.95, 1.0, 0.38)
+	for rect in [Rect2(9, 9, _vp.size.x - 18, 3), Rect2(9, _vp.size.y - 12, _vp.size.x - 18, 3),
+			Rect2(9, 9, 3, _vp.size.y - 18), Rect2(_vp.size.x - 12, 9, 3, _vp.size.y - 18)]:
+		var b := ColorRect.new()
+		b.color = edge
+		b.position = rect.position
+		b.size = rect.size
+		root.add_child(b)
+	_wave = Line2D.new()
+	_wave.width = 2.5
+	_wave.default_color = Color(0.35, 0.95, 1.0, 0.45)
+	_wave.antialiased = true
+	root.add_child(_wave)
+	_gauge = Line2D.new()
+	_gauge.width = 3.5
+	_gauge.default_color = Color(0.45, 0.97, 1.0, 0.6)
+	_gauge.antialiased = true
+	root.add_child(_gauge)
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
 	vbox.add_theme_constant_override("separation", 6)
@@ -145,6 +168,10 @@ func _build_viewport() -> void:
 	margin.add_child(vbox)
 	root.add_child(margin)
 	_title = _mk_label(vbox, 40, Tokens.HOLO_CORE, true)
+	_rule = ColorRect.new()
+	_rule.color = Color(0.40, 0.95, 1.0, 0.35)
+	_rule.custom_minimum_size = Vector2(0, 2)
+	vbox.add_child(_rule)
 	_body = _mk_label(vbox, 31, Color(0.75, 0.88, 1.0), false)
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_clock = _mk_label(vbox, 92, Tokens.HOLO_CORE, true)
@@ -178,6 +205,7 @@ func _render_text() -> void:
 		_body.visible = _lines.size() > 1
 		if _lines.size() > 1:
 			_body.text = String(_lines[1])
+		_decorate()
 	else:
 		_title.visible = true
 		_body.visible = true
@@ -187,7 +215,43 @@ func _render_text() -> void:
 		for i in range(1, _lines.size()):
 			rest.append(String(_lines[i]))
 		_body.text = "\n".join(rest)
+	_decorate()
 	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+## R8: redraw the framed-display dressing for the current state — a waveform
+## trace (text states, seeded per state so each panel's trace differs), a ring
+## gauge top-right (clock: live seconds sweep; text: a resting value hashed
+## from the title), and the header rule (text states only).
+func _decorate() -> void:
+	if _wave == null:
+		return
+	var w := float(_vp.size.x)
+	var h := float(_vp.size.y)
+	var is_clock := type_name() == "CLOCK"
+	_rule.visible = not is_clock
+	_wave.visible = not is_clock
+	if not is_clock:
+		var seed := float(state) * 1.37 + 0.6
+		var pts := PackedVector2Array()
+		var x := 26.0
+		while x <= w - 26.0:
+			pts.append(Vector2(x, h - 58.0 + sin(x * 0.045 + seed) * 10.0 + sin(x * 0.013 + seed * 1.7) * 6.0))
+			x += 8.0
+		_wave.points = pts
+	var val := 0.0
+	if is_clock:
+		val = float(Time.get_time_dict_from_system().second) / 60.0
+	else:
+		val = float(abs(_title.text.hash()) % 100) / 100.0
+	var gp := PackedVector2Array()
+	var cen := Vector2(w - 88.0, 96.0)
+	var sweep := 270.0 * clampf(val, 0.02, 1.0)
+	var a := 135.0
+	while a <= 135.0 + sweep:
+		var r := deg_to_rad(a)
+		gp.append(cen + Vector2(cos(r), sin(r)) * 54.0)
+		a += 6.0
+	_gauge.points = gp
 
 func _apply_content() -> void:
 	if not _built:

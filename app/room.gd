@@ -26,7 +26,7 @@ var _wall_mat_cache: StandardMaterial3D = null
 ## lighting instead of glowing flat like the old unshaded procedural panels.
 func _wall_mat() -> StandardMaterial3D:
 	if _wall_mat_cache == null:
-		_wall_mat_cache = _lit(Color(0.62, 0.64, 0.68), 0.05, 0.9, TEX_WALL)
+		_wall_mat_cache = _lit(Color(0.32, 0.34, 0.38), 0.05, 0.9, TEX_WALL)   # R8: near-black charcoal per the Gemini target
 		_wall_mat_cache.uv1_scale = Vector3(2.5, 1.0, 1.0)
 		_wall_mat_cache.texture_repeat = true
 	return _wall_mat_cache
@@ -138,7 +138,7 @@ func _build_floor(table_xz: Vector2) -> void:
 	plane.size = Vector2(HALF_X * 2.0, Z_FRONT - Z_BACK)
 	# the texture carries the tone (dark blue-rich plate, seams + scuffs); the tint stays near white so the two don't
 	# multiply into black (brief #12: darker and richer than #8, never black)
-	var mat := _lit(Color(0.85, 0.88, 0.92), 0.1, 0.42, TEX_FLOOR)   # R7-0: photographic basalt tiles
+	var mat := _lit(Color(0.44, 0.47, 0.52), 0.1, 0.30, TEX_FLOOR)   # R8: dark polished stone (was R7-0 photographic basalt at 0.85)
 	mat.uv1_scale = Vector3(3.0, 3.0, 1.0)
 	mat.texture_repeat = true
 	_mesh("Floor", plane, mat, Vector3(0, 0, (Z_FRONT + Z_BACK) * 0.5))
@@ -219,8 +219,13 @@ func _build_opening() -> void:
 	# archway blocking the view — the wall simply ends, like the picture. Only a
 	# flush threshold plate stays, as the floor's transition to the terrace.
 	_lab.lit.add_box(Vector3(0, 0.012, Z_BACK), Vector3(OPEN_X1 - OPEN_X0, 0.024, 0.34), ti * 0.8)
+	# R8: the Gemini target's opening has chamfered top corners — diagonal wall
+	# strips across the corner squares (wall geometry, not a bolted-on frame).
+	var cham := Color(0.30, 0.34, 0.40)
+	_lab.lit.add_box(Vector3(-2.71, 3.09, Z_BACK), Vector3(0.85, 0.30, 0.14), cham, Basis(Vector3(0, 0, 1), -PI / 4.0))
+	_lab.lit.add_box(Vector3(2.71, 3.09, Z_BACK), Vector3(0.85, 0.30, 0.14), cham, Basis(Vector3(0, 0, 1), PI / 4.0))
 	# terrace floor: the room's plate extended past the wall line to the railing
-	var tmat := _lit(Color(0.8, 0.83, 0.88), 0.1, 0.45, TEX_FLOOR)
+	var tmat := _lit(Color(0.52, 0.55, 0.6), 0.1, 0.45, TEX_FLOOR)
 	tmat.uv1_scale = Vector3(3.0, 1.2, 1.0)
 	tmat.texture_repeat = true
 	var terrace := PlaneMesh.new()
