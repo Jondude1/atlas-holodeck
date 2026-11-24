@@ -68,27 +68,25 @@ func build(table_xz: Vector2) -> void:
 	add_child(_arm)
 	_presence = Presence.new()
 	_presence.name = "Presence"
-	_presence.position = Vector3(-2.0, 0, -2.25)
-	_presence.scale = Vector3.ONE * 1.5   # R8: the Gemini target's sphere is bigger still, ~1.3 m across (R6 was 1.3)
+	_presence.position = Vector3(-2.15, 0.0, -2.15)   # R8 polish: true 1:1 scale so orb hovers at natural bench height (~1.42 m)
 	add_child(_presence)
-	# R3-9: the table's edge light spills onto the floor as a soft gloss strip (fake reflection)
+	# R3-9 / R8 tone-lift: wide, soft polished-floor sheen from the table and opening (no hard center streak)
 	var gloss := MeshInstance3D.new()
 	gloss.name = "FloorGloss"
 	var gp := PlaneMesh.new()
-	gp.size = Vector2(3.1, 1.35)
+	gp.size = Vector2(4.4, 2.4)
 	gloss.mesh = gp
-	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.09), Fx.radial_texture(128, 1.9))
-	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 1.05)
+	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.032), Fx.radial_texture(128, 2.6))
+	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 0.95)
 	add_child(gloss)
-	# R8: daylight spill from the opening — a wide pale sheen on the floor inside
-	# the back wall, the target render's bright patch in front of the vista.
+	# R8: daylight spill from the opening — a wide soft satin sheen across the polished floor
 	var spill := MeshInstance3D.new()
 	spill.name = "VistaSpill"
 	var spm := PlaneMesh.new()
-	spm.size = Vector2(5.6, 2.8)
+	spm.size = Vector2(6.6, 4.0)
 	spill.mesh = spm
-	spill.material_override = Fx.glow_decal(Color(0.75, 0.85, 0.95, 0.055), Fx.radial_texture(128, 1.7))
-	spill.position = Vector3(0, 0.005, -3.85)
+	spill.material_override = Fx.glow_decal(Color(0.80, 0.86, 0.92, 0.085), Fx.radial_texture(128, 2.0))
+	spill.position = Vector3(0, 0.005, -3.45)
 	add_child(spill)
 
 	# R7-0: baked contact shadows — with no realtime shadow maps (Quest budget), soft
@@ -110,35 +108,35 @@ func build(table_xz: Vector2) -> void:
 		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(sh)
 
-## Round 6: two ring-lit display platforms flanking the FAR opening, inside the room —
-## the suit bay, as the picture has it. (Suits arrive via the image-to-3D pipeline.)
+## Round 6 / R8 tone-lift: two ring-lit display platforms flanking the FAR opening, inside the room —
+## readable satin charcoal bases with crisp cyan rings matching the look reference.
 func _suit_platforms() -> void:
 	for px in [-2.5, 2.5]:
-		lit.add_cyl(Vector3(px, 0.035, -4.3), 0.58, 0.07, _ti(0.5), 28)
-		lit.add_cyl(Vector3(px, 0.075, -4.3), 0.5, 0.012, _deep(0.3), 28)
-		var ring := Color(Tokens.HOLO_LINE.r * 0.32, Tokens.HOLO_LINE.g * 0.32, Tokens.HOLO_LINE.b * 0.32)
+		lit.add_cyl(Vector3(px, 0.035, -4.3), 0.58, 0.07, Color(0.32, 0.35, 0.39), 28)
+		lit.add_cyl(Vector3(px, 0.075, -4.3), 0.5, 0.012, Color(0.18, 0.20, 0.24), 28)
+		var ring := Color(Tokens.HOLO_LINE.r * 0.60, Tokens.HOLO_LINE.g * 0.60, Tokens.HOLO_LINE.b * 0.60)
 		emi.add_torus(Vector3(px, 0.078, -4.3), 0.53, 0.012, ring, 48, 6)
-		emi.add_cyl(Vector3(px, 0.004, -4.3), 0.64, 0.008, ring * 0.35, 28)
+		emi.add_cyl(Vector3(px, 0.004, -4.3), 0.64, 0.008, ring * 0.45, 28)
 
-## Bare benches along both side walls — dark slabs on block legs, an emissive edge line,
+## Bare benches along both side walls — readable charcoal slabs on block legs, subtle cyan edge line,
 ## nothing on them but what Jon puts there (the props + the arm, on the right).
 func _bench_slabs() -> void:
 	for side in [-1.0, 1.0]:
 		var x: float = side * 3.55
-		lit.add_box(Vector3(x, 0.92, -2.5), Vector3(0.7, 0.055, 3.9), _ti(0.5))
+		lit.add_box(Vector3(x, 0.92, -2.5), Vector3(0.7, 0.055, 3.9), Color(0.28, 0.30, 0.33))
 		for lz in [-4.15, -0.85]:
-			lit.add_box(Vector3(x, 0.44, lz), Vector3(0.6, 0.85, 0.18), _deep(0.3))
-		_e_box(Vector3(x - side * 0.36, 0.9, -2.5), Vector3(0.012, 0.012, 3.9), 0.35)
+			lit.add_box(Vector3(x, 0.44, lz), Vector3(0.6, 0.85, 0.18), Color(0.16, 0.18, 0.20))
+		_e_box(Vector3(x - side * 0.36, 0.9, -2.5), Vector3(0.012, 0.012, 3.9), 0.28)
 	# the grabbable props live on the right slab
 	_prop_spots.append([5, Vector3(3.5, 0.9475, -2.25)])
 	_prop_spots.append([6, Vector3(3.5, 0.9475, -1.55)])
 
-## Slim WHITE light bars in the dark ceiling (the picture's lighting signature) — HDR
-## vertex colour so they bloom softly; the room's actual light stays the table's rig.
+## Slim WHITE light bars in the charcoal ceiling (the reference's lighting signature) —
+## crisp overhead presence without washing out the room.
 func _ceiling_bars() -> void:
-	emi.add_box(Vector3(0, 3.36, -1.0), Vector3(0.16, 0.03, 3.6), Color(1.55, 1.55, 1.5))
+	emi.add_box(Vector3(0, 3.36, -1.0), Vector3(0.13, 0.03, 3.4), Color(1.05, 1.08, 1.12))
 	for side in [-1.0, 1.0]:
-		emi.add_box(Vector3(side * 2.3, 3.36, -1.0), Vector3(0.13, 0.03, 2.8), Color(1.2, 1.2, 1.16))
+		emi.add_box(Vector3(side * 2.3, 3.36, -1.0), Vector3(0.10, 0.03, 2.6), Color(0.82, 0.85, 0.88))
 
 func _seal() -> void:
 	_lit_mat = StandardMaterial3D.new()

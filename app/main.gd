@@ -57,6 +57,10 @@ func _ready() -> void:
 		push_warning("OpenXR unavailable - using fallback camera")
 		_fallback.current = true
 		_fallback.look_at($HoloTable.global_position + Vector3.UP * 1.0)
+		for hp in ["XROrigin3D/LeftHand/Marker", "XROrigin3D/RightHand/Marker", "XROrigin3D/RightHand/Laser"]:
+			var hn := get_node_or_null(hp) as Node3D
+			if hn:
+				hn.visible = false
 		if not XrBoot.gave_up:
 			XrBoot.xr_started.connect(_on_xr_started, CONNECT_ONE_SHOT)
 	_voice = VoiceLink.new()
@@ -104,31 +108,33 @@ func _ready() -> void:
 func _on_xr_started() -> void:
 	_xr_ok = true
 	_fallback.current = false
+	for hp in ["XROrigin3D/LeftHand/Marker", "XROrigin3D/RightHand/Marker", "XROrigin3D/RightHand/Laser"]:
+		var hn := get_node_or_null(hp) as Node3D
+		if hn:
+			hn.visible = true
 	_table.set_link("LINK — LOCAL (XR)")
 
 ## Colours come from Tokens only; the scene file carries geometry, not colour.
 func _apply_tokens() -> void:
 	var env: Environment = $WorldEnvironment.environment
-	# Static procedural sky: never seen (the room hides it), exists so metals reflect a
-	# blue horizon band instead of a flat colour. Cheap: no probes, no post.
+	# Static procedural sky: never seen (the room hides it), exists so metals/floor reflect a
+	# readable neutral-charcoal horizon instead of a bright blue wash or crushed black.
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Tokens.ROOM_BG.lerp(Tokens.HOLO_DEEP, 0.55)   # upward-facing metal (floor, slab top) reflects this
-	# horizon lifted a step (brief #12): this is what bare metal reflects, so the slab / benches / rig read as machined
-	# metal with a blue gradient instead of flat black. Still never seen directly (the room encloses it).
-	sky_mat.sky_horizon_color = Tokens.HOLO_PRIMARY.lerp(Tokens.HOLO_DEEP, 0.4)
-	sky_mat.ground_horizon_color = Tokens.HOLO_PRIMARY.lerp(Tokens.HOLO_DEEP, 0.5)
-	sky_mat.ground_bottom_color = Tokens.HOLO_DEEP
+	sky_mat.sky_top_color = Color(0.22, 0.23, 0.25)
+	sky_mat.sky_horizon_color = Color(0.46, 0.48, 0.51)
+	sky_mat.ground_horizon_color = Color(0.38, 0.40, 0.43)
+	sky_mat.ground_bottom_color = Color(0.12, 0.13, 0.15)
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.ambient_light_energy = 1.1
+	env.ambient_light_energy = 0.46
 	env.fog_enabled = true
-	env.fog_light_color = Tokens.HOLO_DEEP.lerp(Tokens.ROOM_BG, 0.4)
-	env.fog_light_energy = 0.8
-	env.fog_density = 0.035
+	env.fog_light_color = Color(0.14, 0.15, 0.17)
+	env.fog_light_energy = 0.55
+	env.fog_density = 0.006
 	env.fog_sky_affect = 0.0
 	_room.build(Vector2($HoloTable.position.x, $HoloTable.position.z))
 	_hud.build(_model, _table)

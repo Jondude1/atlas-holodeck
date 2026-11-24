@@ -4,7 +4,7 @@ shader_type spatial;
 // dark silhouette on white; alpha comes from inverted luminance with an
 // alpha-scissor cutout, so these stay in the OPAQUE pass (no transparent-layer
 // cost against the vista's 4-layer sightline budget).
-render_mode unshaded, cull_disabled;
+render_mode unshaded, cull_disabled, fog_disabled;
 
 uniform sampler2D tex : source_color;
 uniform vec4 tint : source_color = vec4(0.07, 0.09, 0.13, 1.0);

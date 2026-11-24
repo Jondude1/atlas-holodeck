@@ -5,7 +5,7 @@ render_mode unshaded, blend_add, cull_disabled, depth_draw_never;
 
 uniform vec3 tint : source_color = vec3(0.35, 0.75, 1.0);
 uniform float fade = 0.0;
-uniform float gain = 0.16;
+uniform float gain = 0.09;
 
 void fragment() {
 	float across = 1.0 - abs(UV.x - 0.5) * 2.0;            // 1 at the quad's centre line, 0 at its edges

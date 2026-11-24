@@ -131,7 +131,10 @@ func _run() -> void:
 	cam.fov = 58.0
 	cam.global_position = Vector3(0.0, 1.9, -0.55)
 	cam.look_at(table.global_position + Vector3(0, 1.1, 0))
-	await create_timer(0.6).timeout
+	# dismiss() pokes the UIPanel SubViewport into UPDATE_ALWAYS for 3 s
+	# (ui_panel poke(3.0)); the PERF ceiling was written for the resting state,
+	# so wait out the poke window (>= 3.5 s after the dismiss) before sampling.
+	await create_timer(3.6).timeout
 	await _snap("r1b-edit-in-place.png")
 	var perf_draws: int = await _draws()
 	var perf_lights: int = _count(root, "Light3D")

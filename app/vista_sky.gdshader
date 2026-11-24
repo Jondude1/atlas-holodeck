@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, cull_front, depth_draw_opaque;
+render_mode unshaded, cull_front, depth_draw_opaque, fog_disabled;
 
 // The vista sky dome (Round 5): a per-vista gradient — top colour, horizon glow band,
 // ground haze — painted by direction only. One draw call, no texture, no fog, no light.

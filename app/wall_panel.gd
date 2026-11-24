@@ -40,14 +40,117 @@ var _vp: SubViewport
 var _title: Label
 var _body: Label
 var _clock: Label
-var _wave: Line2D
-var _gauge: Line2D
+var _chrome_draw: Control
 var _rule: ColorRect
 var _display_mat: StandardMaterial3D
 var _pic_mat: StandardMaterial3D
 var _rim_mat: StandardMaterial3D
 var _lines: Array = []
 var _built := false
+
+## Instrument chrome layer drawn inside the SubViewport on UPDATE_ONCE (zero 3D draw cost):
+## subtle technical micro-grid, thin cyan inner border + corner L-brackets, concentric Stark
+## ring gauge on the right (clear of text), and dual-trace oscilloscope strip along the bottom.
+class _PanelChrome extends Control:
+	var is_clock := false
+	var wave_seed := 0.6
+	var gauge_val := 0.5
+	var is_large := true
+
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		if w <= 0.0 or h <= 0.0:
+			return
+		# 1. Faint technical micro-grid inside the dark glass
+		var grid_col := Color(0.24, 0.76, 0.88, 0.065)
+		var step := 32.0
+		var gx := 12.0 + step
+		while gx < w - 12.0:
+			draw_line(Vector2(gx, 12.0), Vector2(gx, h - 12.0), grid_col, 1.0)
+			gx += step
+		var gy := 12.0 + step
+		while gy < h - 12.0:
+			draw_line(Vector2(12.0, gy), Vector2(w - 12.0, gy), grid_col, 1.0)
+			gy += step
+		# 2. Thin teal inner border + bright corner L-brackets
+		var border_col := Color(0.35, 0.86, 0.96, 0.34)
+		var r := Rect2(10.0, 10.0, w - 20.0, h - 20.0)
+		draw_rect(r, border_col, false, 1.5)
+		var brk := Color(0.55, 0.95, 1.0, 0.82)
+		var bl := 16.0
+		var bw := 2.5
+		# top-left, top-right, bottom-left, bottom-right brackets
+		draw_line(Vector2(10.0, 10.0), Vector2(10.0 + bl, 10.0), brk, bw)
+		draw_line(Vector2(10.0, 10.0), Vector2(10.0, 10.0 + bl), brk, bw)
+		draw_line(Vector2(w - 10.0, 10.0), Vector2(w - 10.0 - bl, 10.0), brk, bw)
+		draw_line(Vector2(w - 10.0, 10.0), Vector2(w - 10.0, 10.0 + bl), brk, bw)
+		draw_line(Vector2(10.0, h - 10.0), Vector2(10.0 + bl, h - 10.0), brk, bw)
+		draw_line(Vector2(10.0, h - 10.0), Vector2(10.0, h - 10.0 - bl), brk, bw)
+		draw_line(Vector2(w - 10.0, h - 10.0), Vector2(w - 10.0 - bl, h - 10.0), brk, bw)
+		draw_line(Vector2(w - 10.0, h - 10.0), Vector2(w - 10.0, h - 10.0 - bl), brk, bw)
+
+		# 3. Section hairlines (right gauge bay + bottom oscilloscope strip)
+		var div_col := Color(0.32, 0.84, 0.96, 0.18)
+		var split_x := w - (168.0 if is_large else 148.0)
+		var wave_top := h - (108.0 if is_large else 96.0)
+		if is_clock:
+			draw_line(Vector2(split_x, 22.0), Vector2(split_x, h - 22.0), div_col, 1.0)
+		else:
+			draw_line(Vector2(split_x, 22.0), Vector2(split_x, wave_top - 10.0), div_col, 1.0)
+			draw_line(Vector2(22.0, wave_top), Vector2(w - 22.0, wave_top), div_col, 1.0)
+
+		# 4. Concentric Stark ring gauge in the right bay (never overlaps text)
+		var cen := Vector2(split_x + (w - 10.0 - split_x) * 0.5, (h * 0.5) if is_clock else (wave_top * 0.52))
+		var rad := 56.0 if is_large else 48.0
+		var track_col := Color(0.28, 0.78, 0.92, 0.24)
+		var tick_col := Color(0.42, 0.90, 1.0, 0.36)
+		var arc_col := Color(0.52, 0.96, 1.0, 0.82)
+		draw_arc(cen, rad, 0.0, TAU, 48, track_col, 2.0, true)
+		draw_arc(cen, rad * 0.74, 0.0, TAU, 36, Color(0.28, 0.78, 0.92, 0.22), 1.2, true)
+		draw_arc(cen, rad * 0.46, 0.0, TAU, 24, Color(0.32, 0.82, 0.94, 0.18), 1.0, true)
+		# 24 radial ticks around outer ring
+		for ti in 24:
+			var ang := float(ti) / 24.0 * TAU
+			var major := (ti % 6) == 0
+			var r0 := rad - (8.0 if major else 4.5)
+			var r1 := rad + (2.0 if major else 0.0)
+			draw_line(cen + Vector2(cos(ang), sin(ang)) * r0, cen + Vector2(cos(ang), sin(ang)) * r1,
+					arc_col if major else tick_col, 1.8 if major else 1.0, true)
+		# Active progress sweep + subtle inner accent arc
+		var a0 := deg_to_rad(135.0)
+		var sweep := deg_to_rad(270.0 * clampf(gauge_val, 0.04, 1.0))
+		draw_arc(cen, rad, a0, a0 + sweep, 40, arc_col, 3.2, true)
+		draw_arc(cen, rad * 0.74, a0 + 0.3, a0 + sweep * 0.75 + 0.3, 28, Color(0.45, 0.92, 1.0, 0.45), 1.8, true)
+		draw_circle(cen, 3.0, Color(0.62, 0.96, 1.0, 0.7))
+
+		# 5. Dual-trace oscilloscope waveform in the bottom strip (text states)
+		if not is_clock:
+			var mid_y := wave_top + (h - 14.0 - wave_top) * 0.52
+			var x0 := 24.0
+			var x1 := w - 24.0
+			draw_line(Vector2(x0, mid_y), Vector2(x1, mid_y), Color(0.26, 0.76, 0.90, 0.16), 1.0)
+			# Small axis tick marks along baseline
+			var tx := x0
+			while tx <= x1:
+				draw_line(Vector2(tx, mid_y - 3.5), Vector2(tx, mid_y + 3.5), Color(0.32, 0.82, 0.94, 0.22), 1.0)
+				tx += 28.0
+			var pts1 := PackedVector2Array()
+			var pts2 := PackedVector2Array()
+			var amp := 24.0 if is_large else 20.0
+			var xx := x0
+			while xx <= x1:
+				var u := (xx - x0) / maxf(x1 - x0, 1.0)
+				var env := sin(u * PI)
+				var y1 := mid_y + (sin(xx * 0.052 + wave_seed) * 0.55 + sin(xx * 0.13 + wave_seed * 2.1) * 0.28 + sin(xx * 0.019 + wave_seed * 0.7) * 0.17) * amp * (0.35 + 0.65 * env)
+				var y2 := mid_y + (sin(xx * 0.031 + wave_seed * 1.4 + 1.2) * 0.6 + cos(xx * 0.085 - wave_seed) * 0.4) * (amp * 0.55) * (0.3 + 0.7 * env)
+				pts1.append(Vector2(xx, y1))
+				pts2.append(Vector2(xx, y2))
+				xx += 6.0
+			if pts2.size() >= 2:
+				draw_polyline(pts2, Color(0.25, 0.78, 0.92, 0.26), 1.6, true)
+			if pts1.size() >= 2:
+				draw_polyline(pts1, Color(0.45, 0.95, 1.0, 0.68), 2.2, true)
 
 func type_name() -> String:
 	if state < TYPES.size():
@@ -72,23 +175,23 @@ func build(pictures_in: Array) -> void:
 	size = Vector2(1.5, 0.85) if size_kind == "large" else Vector2(0.95, 0.6)
 	grab_radius = size.x * 0.62
 	add_to_group("grabbable")
-	# frame: titanium border + dark backing, one merged mesh
+	# frame: slim dark recessed charcoal border + near-black backing, one merged mesh
 	var mb := MeshBuilder.new()
-	var ti := Tokens.TITANIUM_DARK.lerp(Tokens.TITANIUM, 0.45)
-	var back := Tokens.ROOM_BG.lerp(Tokens.HOLO_DEEP, 0.25)
-	var bw := 0.035
-	mb.add_box(Vector3(0, 0, -0.006), Vector3(size.x + 0.02, size.y + 0.02, 0.012), back)
-	mb.add_box(Vector3(0, size.y * 0.5 + bw * 0.5, 0.004), Vector3(size.x + bw * 2.0, bw, 0.03), ti)
-	mb.add_box(Vector3(0, -size.y * 0.5 - bw * 0.5, 0.004), Vector3(size.x + bw * 2.0, bw, 0.03), ti)
-	mb.add_box(Vector3(-size.x * 0.5 - bw * 0.5, 0, 0.004), Vector3(bw, size.y, 0.03), ti)
-	mb.add_box(Vector3(size.x * 0.5 + bw * 0.5, 0, 0.004), Vector3(bw, size.y, 0.03), ti)
+	var ti := Tokens.TITANIUM_DARK.lerp(Tokens.TITANIUM, 0.16)
+	var back := Color(0.008, 0.014, 0.020)
+	var bw := 0.022
+	mb.add_box(Vector3(0, 0, -0.006), Vector3(size.x + 0.016, size.y + 0.016, 0.012), back)
+	mb.add_box(Vector3(0, size.y * 0.5 + bw * 0.5, 0.004), Vector3(size.x + bw * 2.0, bw, 0.026), ti)
+	mb.add_box(Vector3(0, -size.y * 0.5 - bw * 0.5, 0.004), Vector3(size.x + bw * 2.0, bw, 0.026), ti)
+	mb.add_box(Vector3(-size.x * 0.5 - bw * 0.5, 0, 0.004), Vector3(bw, size.y, 0.026), ti)
+	mb.add_box(Vector3(size.x * 0.5 + bw * 0.5, 0, 0.004), Vector3(bw, size.y, 0.026), ti)
 	var frame := MeshInstance3D.new()
 	frame.name = "Frame"
 	var fm := StandardMaterial3D.new()
 	fm.vertex_color_use_as_albedo = true
 	fm.vertex_color_is_srgb = true
-	fm.metallic = 0.5
-	fm.roughness = 0.45
+	fm.metallic = 0.45
+	fm.roughness = 0.52
 	frame.mesh = mb.build()
 	frame.material_override = fm
 	add_child(frame)
@@ -109,7 +212,7 @@ func build(pictures_in: Array) -> void:
 	# the display quad (viewport texture, or a picture texture in PICTURE state)
 	_display_mat = StandardMaterial3D.new()
 	_display_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_display_mat.albedo_color = Color(0.75, 0.9, 1.0, 1.0)
+	_display_mat.albedo_color = Color(0.84, 0.95, 1.0, 1.0)
 	var disp := MeshInstance3D.new()
 	disp.name = "Display"
 	var dq := QuadMesh.new()
@@ -126,55 +229,42 @@ func build(pictures_in: Array) -> void:
 
 func _build_viewport() -> void:
 	_vp = SubViewport.new()
-	_vp.size = Vector2i(640, 360) if size_kind == "large" else Vector2i(512, 320)
+	var is_lg := size_kind == "large"
+	_vp.size = Vector2i(640, 360) if is_lg else Vector2i(512, 320)
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_vp.transparent_bg = false
 	add_child(_vp)
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = Color(0.012, 0.028, 0.042, 1.0)   # R8: near-black teal, the target's display glass
+	bg.color = Color(0.007, 0.020, 0.032, 1.0)   # R8 polish: deep recessed teal-black instrument glass
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(bg)
-	# R8 framed-display dressing (all inside the viewport texture — zero 3D cost):
-	# a thin bright inner border, a waveform trace along the bottom, a ring gauge.
-	var edge := Color(0.40, 0.95, 1.0, 0.38)
-	for rect in [Rect2(9, 9, _vp.size.x - 18, 3), Rect2(9, _vp.size.y - 12, _vp.size.x - 18, 3),
-			Rect2(9, 9, 3, _vp.size.y - 18), Rect2(_vp.size.x - 12, 9, 3, _vp.size.y - 18)]:
-		var b := ColorRect.new()
-		b.color = edge
-		b.position = rect.position
-		b.size = rect.size
-		root.add_child(b)
-	_wave = Line2D.new()
-	_wave.width = 2.5
-	_wave.default_color = Color(0.35, 0.95, 1.0, 0.45)
-	_wave.antialiased = true
-	root.add_child(_wave)
-	_gauge = Line2D.new()
-	_gauge.width = 3.5
-	_gauge.default_color = Color(0.45, 0.97, 1.0, 0.6)
-	_gauge.antialiased = true
-	root.add_child(_gauge)
+	var chrome := _PanelChrome.new()
+	chrome.is_large = is_lg
+	chrome.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(chrome)
+	_chrome_draw = chrome
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vbox.add_theme_constant_override("separation", 6)
+	vbox.add_theme_constant_override("separation", 8)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.add_theme_constant_override("margin_left", 26)
+	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_right", 184 if is_lg else 164)
+	margin.add_theme_constant_override("margin_bottom", 112 if is_lg else 100)
 	margin.add_child(vbox)
 	root.add_child(margin)
-	_title = _mk_label(vbox, 40, Tokens.HOLO_CORE, true)
+	_title = _mk_label(vbox, 30 if is_lg else 26, Color(0.68, 0.95, 1.0, 0.95), true)
 	_rule = ColorRect.new()
-	_rule.color = Color(0.40, 0.95, 1.0, 0.35)
-	_rule.custom_minimum_size = Vector2(0, 2)
+	_rule.color = Color(0.38, 0.90, 1.0, 0.40)
+	_rule.custom_minimum_size = Vector2(0, 1.5)
 	vbox.add_child(_rule)
-	_body = _mk_label(vbox, 31, Color(0.75, 0.88, 1.0), false)
+	_body = _mk_label(vbox, 22 if is_lg else 20, Color(0.56, 0.88, 0.97, 0.88), false)
+	_body.add_theme_constant_override("line_spacing", 5)
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_clock = _mk_label(vbox, 92, Tokens.HOLO_CORE, true)
+	_clock = _mk_label(vbox, 78 if is_lg else 68, Color(0.76, 0.97, 1.0, 0.96), true)
 	_clock.visible = false
 	_vp.add_child(root)
 	_display_mat.albedo_texture = _vp.get_texture()
@@ -201,57 +291,38 @@ func _render_text() -> void:
 		_title.visible = false
 		_body.visible = false
 		_clock.visible = true
-		_clock.text = String(_lines[0]) if _lines.size() > 0 else ""
+		_clock.text = str(_lines[0]) if _lines.size() > 0 else ""
 		_body.visible = _lines.size() > 1
 		if _lines.size() > 1:
-			_body.text = String(_lines[1])
-		_decorate()
+			_body.text = str(_lines[1])
 	else:
 		_title.visible = true
 		_body.visible = true
 		_clock.visible = false
-		_title.text = String(_lines[0]) if _lines.size() > 0 else ""
+		_title.text = str(_lines[0]) if _lines.size() > 0 else ""
 		var rest: Array = []
 		for i in range(1, _lines.size()):
-			rest.append(String(_lines[i]))
+			rest.append(str(_lines[i]))
 		_body.text = "\n".join(rest)
 	_decorate()
 	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 
-## R8: redraw the framed-display dressing for the current state — a waveform
-## trace (text states, seeded per state so each panel's trace differs), a ring
-## gauge top-right (clock: live seconds sweep; text: a resting value hashed
-## from the title), and the header rule (text states only).
+## R8 polish: update the instrument chrome parameters and queue one crisp redraw.
 func _decorate() -> void:
-	if _wave == null:
+	if _chrome_draw == null:
 		return
-	var w := float(_vp.size.x)
-	var h := float(_vp.size.y)
 	var is_clock := type_name() == "CLOCK"
 	_rule.visible = not is_clock
-	_wave.visible = not is_clock
-	if not is_clock:
-		var seed := float(state) * 1.37 + 0.6
-		var pts := PackedVector2Array()
-		var x := 26.0
-		while x <= w - 26.0:
-			pts.append(Vector2(x, h - 58.0 + sin(x * 0.045 + seed) * 10.0 + sin(x * 0.013 + seed * 1.7) * 6.0))
-			x += 8.0
-		_wave.points = pts
 	var val := 0.0
 	if is_clock:
 		val = float(Time.get_time_dict_from_system().second) / 60.0
 	else:
-		val = float(abs(_title.text.hash()) % 100) / 100.0
-	var gp := PackedVector2Array()
-	var cen := Vector2(w - 88.0, 96.0)
-	var sweep := 270.0 * clampf(val, 0.02, 1.0)
-	var a := 135.0
-	while a <= 135.0 + sweep:
-		var r := deg_to_rad(a)
-		gp.append(cen + Vector2(cos(r), sin(r)) * 54.0)
-		a += 6.0
-	_gauge.points = gp
+		val = 0.25 + float(abs(_title.text.hash()) % 65) / 100.0
+	var chrome := _chrome_draw as _PanelChrome
+	chrome.is_clock = is_clock
+	chrome.wave_seed = float(state) * 1.37 + 0.6
+	chrome.gauge_val = val
+	chrome.queue_redraw()
 
 func _apply_content() -> void:
 	if not _built:

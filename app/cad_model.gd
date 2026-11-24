@@ -5,7 +5,7 @@ extends "res://model.gd"
 ## scaled up by display_scale so a 3 in part reads at table size, and every displayed dimension divides it back out.
 ## Loader promoted from parked/trebuchet-app-20261119/ (GLTFDocument path, flat parts re-parented by name).
 
-const DISPLAY_FIT_M := 0.5          # longest horizontal true dimension is shown at this width on the inset
+const DISPLAY_FIT_M := 0.82         # R8 polish: heroic table presence (fits cleanly inside the 0.90 m ring / 1.0 m inset)
 const SCALE_MIN := 0.25
 const SCALE_MAX := 14.0
 

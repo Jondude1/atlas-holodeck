@@ -42,7 +42,8 @@ void fragment() {
 	float we = e * mix(0.55, 1.0, res);
 	float wb = band * 0.6;
 	float sum = max(wf + we + wb, 1e-3);
-	vec3 edge_col = mix(line_color, core_color, flash) * mix(1.0, 1.4, res);
-	ALBEDO = (fill_color * wf + edge_col * we + core_color * wb) / sum;
+	vec3 vol_col = vec3(fill_color.r * 0.45, mix(fill_color.g, line_color.g, 0.25), mix(fill_color.b, line_color.b, 0.18)) * 0.88;
+	vec3 edge_col = mix(vec3(line_color.r * 0.5, line_color.g, line_color.b * 0.94), core_color, clamp(flash * 0.55, 0.0, 0.75)) * mix(0.9, 1.15, res);
+	ALBEDO = (vol_col * wf + edge_col * we + core_color * 1.2 * wb) / sum;
 	ALPHA = min(sum, 1.0) * wire;
 }

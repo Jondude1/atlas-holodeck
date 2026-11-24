@@ -9,7 +9,7 @@ const HOME_POS := Vector3(0.0, 0.951, 0.0)  # table centre, on the surface (Holo
 const EXPLODE_DISTANCE := 0.25
 const MATERIALIZE_TIME := 2.0
 const SCHEMATIC_LIFT := 0.002  # metres above the table surface (the model origin)
-const SCAN_PLANE_ALPHA := 0.45
+const SCAN_PLANE_ALPHA := 0.18
 const SCAN_PLANE_MIN := 0.3    # metres: small parts still get a clear sweep
 const TETHER_RISE := 0.13      # metres: label sits this far above its part
 const TETHER_SIDE := 0.1       # ...and this far out to the side, away from the assembly centre
@@ -594,7 +594,7 @@ func schematic_texture() -> Texture2D:
 	return _schematic_mat.albedo_texture if _schematic_mat else null
 
 func _set_schematic_alpha(a: float) -> void:
-	_schematic_mat.albedo_color = Color(1, 1, 1, a)
+	_schematic_mat.albedo_color = Color(0.70, 0.85, 0.94, a * 0.68)
 	for l in _dim_labels:
 		l.modulate = Tokens.a(Tokens.HOLO_LINE, a)
 

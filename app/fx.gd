@@ -23,9 +23,9 @@ static func grid_material(base: Color, minor_step: float, major_step: float) -> 
 	m.set_shader_parameter("major_strength", Tokens.GRID_MINOR_ALPHA * 2.0)
 	m.set_shader_parameter("minor_spacing", minor_step)
 	m.set_shader_parameter("major_spacing", major_step)
-	m.set_shader_parameter("minor_strength", 0.13)   # v2 look pass (Jon: "obnoxious blue lines") — the grid whispers; the hologram is the hero
-	m.set_shader_parameter("major_strength", 0.25)
-	m.set_shader_parameter("fine_strength", 0.05)
+	m.set_shader_parameter("minor_strength", 0.17)   # R8 polish: crisp fine cyan grid over dark obsidian glass
+	m.set_shader_parameter("major_strength", 0.32)
+	m.set_shader_parameter("fine_strength", 0.06)
 	return m
 
 ## Light strip with a pulse travelling along `axis` (see pulse.gdshader). HDR energy as Fx.emissive.

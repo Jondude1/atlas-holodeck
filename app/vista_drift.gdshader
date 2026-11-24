@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_never, blend_mix;
+render_mode unshaded, cull_disabled, depth_draw_never, blend_mix, fog_disabled;
 
 // Drifting soft layers (Round 5): mist banks and the cloud band. The texture scrolls in
 // UV and the whole layer breathes (alpha sine) — all in TIME, zero CPU. depth_draw_never

@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, depth_draw_opaque;
+render_mode unshaded, depth_draw_opaque, fog_disabled;
 
 // The vista sea (Round 5; photographic since R7-6b). Jon called the old fully
 // procedural version "that weird plane right after the balcony" — a flat colour
