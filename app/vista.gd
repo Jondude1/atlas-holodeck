@@ -32,7 +32,7 @@ const DEFS := {
 		"omni_tint": Color(1.05, 1.0, 0.9), "omni_energy": 1.0,
 		"water_y": -4.2, "water_deep": Color(0.02, 0.23, 0.38), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(0.85, 0.93, 1.0), "mist_alpha": 0.35, "cloud_tint": Color(1, 1, 1), "boat": true,
-		"rock": Color(0.95, 0.98, 1.0), "drop": 9.5,
+		"rock": Color(0.95, 0.98, 1.0), "drop": 9.5, "sea": [0.36, 0.82, 1.0],   # shader UV: v=0 at the TOP of the painting; the sea band is rows .36-.82
 	},
 	"lake": {
 		"tex": "res://vistas/vista-lake.png", "card_top": 14.5,
@@ -41,7 +41,7 @@ const DEFS := {
 		"omni_tint": Color(0.75, 0.85, 1.1), "omni_energy": 0.8,
 		"water_y": -3.0, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,
 		"mist": Color(0.75, 0.85, 1.0), "mist_alpha": 0.6, "cloud_tint": Color(0.6, 0.7, 0.9), "boat": true,
-		"rock": Color(0.85, 0.9, 0.98), "drop": 7.0,
+		"rock": Color(0.85, 0.9, 0.98), "drop": 7.0, "sea": [0.45, 0.75, 0.5],
 	},
 	"valley": {
 		"tex": "res://vistas/vista-valley.png", "card_top": 15.2,
@@ -50,7 +50,7 @@ const DEFS := {
 		"omni_tint": Color(1.1, 1.0, 0.85), "omni_energy": 0.95,
 		"water_y": 999.0, "water_deep": Color(0.02, 0.2, 0.3), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(1.0, 0.97, 0.9), "mist_alpha": 0.45, "cloud_tint": Color(1, 0.98, 0.95), "boat": false,
-		"rock": Color(0.52, 0.58, 0.4), "drop": 8.5,
+		"rock": Color(0.52, 0.58, 0.4), "drop": 8.5, "sea": [0.0, 0.0, 0.0],
 	},
 }
 
@@ -63,6 +63,8 @@ const GRADES := {
 const TEX_GULL: Texture2D = preload("res://textures/gull.png")
 const TEX_BOAT: Texture2D = preload("res://textures/boat.png")
 const TEX_ROCK: Texture2D = preload("res://textures/cliff-rock.png")
+const TEX_OCEAN: Texture2D = preload("res://textures/ocean-surface.png")
+const CARD_SHADER: Shader = preload("res://vista_card.gdshader")
 const LIFE_SHADER: Shader = preload("res://vista_life.gdshader")
 
 var _roots: Dictionary = {}            # name -> Node3D
@@ -155,7 +157,7 @@ func _apply_grade_statics(nm: String) -> void:
 	var g: Dictionary = GRADES[_grade]
 	var d: Dictionary = DEFS[nm]
 	if _cards.has(nm):
-		(_cards[nm] as StandardMaterial3D).albedo_color = g["card"]
+		(_cards[nm] as ShaderMaterial).set_shader_parameter("tint", g["card"])
 	if _rocks.has(nm):
 		(_rocks[nm] as StandardMaterial3D).albedo_color = (d["rock"] as Color) * (g["card"] as Color)
 	if _domes.has(nm):
@@ -252,11 +254,13 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	var card := MeshInstance3D.new()
 	card.name = "FarCard"
 	card.mesh = _card_mesh(FAR_R, 132.0, top - 22.0, top, 32)
-	var cm := StandardMaterial3D.new()
-	cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	cm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	cm.disable_fog = true
-	cm.albedo_texture = load(d["tex"]) as Texture2D
+	var cm := ShaderMaterial.new()
+	cm.shader = CARD_SHADER
+	cm.set_shader_parameter("tex", load(d["tex"]) as Texture2D)
+	var sea: Array = d["sea"]
+	cm.set_shader_parameter("sea_lo", sea[0])
+	cm.set_shader_parameter("sea_hi", sea[1])
+	cm.set_shader_parameter("sway", sea[2])
 	card.material_override = cm
 	_cards[nm] = cm
 	_seal_vista_node(card)
@@ -277,6 +281,7 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 		wm.set_shader_parameter("deep_color", d["water_deep"])
 		wm.set_shader_parameter("spark_color", d["water_spark"])
 		wm.set_shader_parameter("speed", d["water_speed"])
+		wm.set_shader_parameter("tex", TEX_OCEAN)
 		wm.set_shader_parameter("glitter_z", 0.0)
 		water.material_override = wm
 		_seal_vista_node(water)
