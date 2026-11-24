@@ -14,6 +14,10 @@ var _ring_pivots: Array[Node3D] = []
 var _nucleus: Sprite3D
 var _pool_mat: StandardMaterial3D
 var _celebrate_t := 0.0
+var _home := Vector3.ZERO          # R7-4: the orb's post (captured on first frame)
+var _home_set := false
+var _visit := Vector3.ZERO         # R7-4: where it has drifted off to look at
+var _visit_until := -1.0
 var _fade := 1.0
 
 func _ready() -> void:
@@ -153,8 +157,22 @@ func set_fade(v: float) -> void:
 	if _pool_mat:
 		_pool_mat.albedo_color = Tokens.a(Tokens.HOLO_PRIMARY, 0.30 * v)
 
+## R7-4: drift over to look at something (a part landing on the table), linger,
+## then ease back to the post. Moss-style attention: it comes to the work.
+func drift_visit(point: Vector3, hold_s: float) -> void:
+	if not _home_set:
+		_home = position
+		_home_set = true
+	_visit = point
+	_visit_until = Time.get_ticks_msec() / 1000.0 + hold_s
+
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
+	if not _home_set:
+		_home = position
+		_home_set = true
+	var dest := _visit if t < _visit_until else _home
+	position = position.lerp(dest, 1.0 - exp(-delta / 0.85))
 	_orb.position.y = 1.35 + sin(t * 0.7) * 0.02
 	_orb.rotation.y += deg_to_rad(5.0) * delta
 	_ring_pivots[0].rotation.y += deg_to_rad(11.0) * delta

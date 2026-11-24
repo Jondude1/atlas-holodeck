@@ -24,7 +24,7 @@ const TURN_CD := 0.28
 const AREAS := [
 	[-3.72, -4.72, 3.72, 2.72],        # the room
 	[-2.65, -5.35, 2.65, -4.6],        # the doorway in the BACK wall — the only bridge out
-	[-3.72, -8.05, 3.72, -4.95],       # the terrace beyond it
+	[-3.72, -8.55, 3.72, -4.95],       # the terrace beyond it (railing at -8.65 since the balcony reached further out, R7-6)
 ]
 # obstacle rectangles (x0, z0, x1, z1), expanded by the body radius
 const BLOCKS := [
@@ -33,7 +33,7 @@ const BLOCKS := [
 	[-3.85, -4.55, -3.1, -0.45],       # the left bench slab
 ]
 # obstacle circles (x, z, r): the suit platforms flanking the opening
-const PADS := [[-2.95, -4.15, 0.82], [2.95, -4.15, 0.82]]
+const PADS := [[-2.5, -4.3, 0.68], [2.5, -4.3, 0.68]]   # guard = the physical disc (0.64) + margin; 0.82 ate the doorway lanes
 
 var _origin: XROrigin3D
 var _cam: XRCamera3D

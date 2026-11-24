@@ -30,16 +30,18 @@ const DEFS := {
 		"sky_top": Color(0.16, 0.42, 0.78), "sky_horizon": Color(0.62, 0.82, 0.95), "sky_ground": Color(0.05, 0.18, 0.28),
 		"fog": Color(0.55, 0.72, 0.85), "ambient_energy": 0.20, "fog_density": 0.012,
 		"omni_tint": Color(1.05, 1.0, 0.9), "omni_energy": 1.0,
-		"water_y": -1.6, "water_deep": Color(0.02, 0.23, 0.38), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
+		"water_y": -4.2, "water_deep": Color(0.02, 0.23, 0.38), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(0.85, 0.93, 1.0), "mist_alpha": 0.35, "cloud_tint": Color(1, 1, 1), "boat": true,
+		"rock": Color(0.95, 0.98, 1.0), "drop": 9.5,
 	},
 	"lake": {
 		"tex": "res://vistas/vista-lake.png", "card_top": 14.5,
 		"sky_top": Color(0.03, 0.08, 0.22), "sky_horizon": Color(0.35, 0.5, 0.72), "sky_ground": Color(0.02, 0.05, 0.12),
 		"fog": Color(0.3, 0.42, 0.6), "ambient_energy": 0.23, "fog_density": 0.02,
 		"omni_tint": Color(0.75, 0.85, 1.1), "omni_energy": 0.8,
-		"water_y": -0.9, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,
+		"water_y": -3.0, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,
 		"mist": Color(0.75, 0.85, 1.0), "mist_alpha": 0.6, "cloud_tint": Color(0.6, 0.7, 0.9), "boat": true,
+		"rock": Color(0.85, 0.9, 0.98), "drop": 7.0,
 	},
 	"valley": {
 		"tex": "res://vistas/vista-valley.png", "card_top": 15.2,
@@ -48,6 +50,7 @@ const DEFS := {
 		"omni_tint": Color(1.1, 1.0, 0.85), "omni_energy": 0.95,
 		"water_y": 999.0, "water_deep": Color(0.02, 0.2, 0.3), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(1.0, 0.97, 0.9), "mist_alpha": 0.45, "cloud_tint": Color(1, 0.98, 0.95), "boat": false,
+		"rock": Color(0.52, 0.58, 0.4), "drop": 8.5,
 	},
 }
 
@@ -59,11 +62,13 @@ const GRADES := {
 }
 const TEX_GULL: Texture2D = preload("res://textures/gull.png")
 const TEX_BOAT: Texture2D = preload("res://textures/boat.png")
+const TEX_ROCK: Texture2D = preload("res://textures/cliff-rock.png")
 const LIFE_SHADER: Shader = preload("res://vista_life.gdshader")
 
 var _roots: Dictionary = {}            # name -> Node3D
 var _cards: Dictionary = {}            # name -> far-card material (grade tint target)
 var _domes: Dictionary = {}            # name -> sky dome material (grade tint target)
+var _rocks: Dictionary = {}            # name -> headland material (grade tint target)
 var _grade := "day"
 var _amb: AudioStreamPlayer
 var _amb_streams: Dictionary = {}
@@ -151,6 +156,8 @@ func _apply_grade_statics(nm: String) -> void:
 	var d: Dictionary = DEFS[nm]
 	if _cards.has(nm):
 		(_cards[nm] as StandardMaterial3D).albedo_color = g["card"]
+	if _rocks.has(nm):
+		(_rocks[nm] as StandardMaterial3D).albedo_color = (d["rock"] as Color) * (g["card"] as Color)
 	if _domes.has(nm):
 		var sm := _domes[nm] as ShaderMaterial
 		sm.set_shader_parameter("top_color", (d["sky_top"] as Color) * (g["sky"] as Color))
@@ -261,6 +268,8 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 		water.name = "Water"
 		var pm := PlaneMesh.new()
 		pm.size = Vector2(58.0, 76.0)
+		pm.subdivide_width = 48   # R7-6: the swell needs vertices to move
+		pm.subdivide_depth = 48
 		water.mesh = pm
 		water.position = Vector3(-36.0, wy, 0.0)
 		var wm := ShaderMaterial.new()
@@ -272,6 +281,41 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 		water.material_override = wm
 		_seal_vista_node(water)
 		root.add_child(water)
+	# R7-6 headland (Jon): the terrace stands on a real point of rock — a noise-
+	# displaced cliff skirt dropping from under the terrace into the sea, so the
+	# balcony has somewhere to look DOWN at, and the point wraps both ways.
+	var head := MeshInstance3D.new()
+	head.name = "Headland"
+	head.mesh = _headland_mesh(d)
+	var hm := StandardMaterial3D.new()
+	hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	hm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	hm.disable_fog = true
+	hm.vertex_color_use_as_albedo = true
+	hm.albedo_texture = TEX_ROCK
+	hm.texture_repeat = true
+	hm.albedo_color = d["rock"]
+	head.material_override = hm
+	_rocks[nm] = hm
+	_seal_vista_node(head)
+	root.add_child(head)
+	if wy < 100.0:
+		# foam collar: a wash band hugging the cliff base, forever scrolling ashore
+		var foam := MeshInstance3D.new()
+		foam.name = "Foam"
+		foam.mesh = _foam_mesh()
+		foam.position = Vector3(0, wy + 0.06, 0)
+		var fm := ShaderMaterial.new()
+		fm.shader = preload("res://vista_drift.gdshader")
+		fm.set_shader_parameter("tex", _foam_texture())
+		fm.set_shader_parameter("tint", Color(0.95, 0.99, 1.0))
+		fm.set_shader_parameter("alpha_base", 0.55)
+		fm.set_shader_parameter("scroll_speed", 0.045)
+		fm.set_shader_parameter("pulse", 0.25)
+		fm.set_shader_parameter("pulse_speed", 0.11)
+		foam.material_override = fm
+		_seal_vista_node(foam)
+		root.add_child(foam)
 	# mist banks: two thin drifting layers hugging the horizon
 	var mist_tex := _mist_texture()
 	for i in 2:
@@ -319,7 +363,7 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 		var boat := MeshInstance3D.new()
 		boat.name = "Boat"
 		boat.mesh = _boat_mesh()
-		boat.position = Vector3(-49.0, wy + 1.32, 0.0)
+		boat.position = Vector3(-52.5, wy + 1.32, 0.0)
 		var bom := ShaderMaterial.new()
 		bom.shader = LIFE_SHADER
 		bom.set_shader_parameter("tex", TEX_BOAT)
@@ -337,7 +381,7 @@ func _gulls_mesh() -> ArrayMesh:
 	var uvs := PackedVector2Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var bases := [Vector3(-34, 7.5, -4), Vector3(-31, 8.6, 3), Vector3(-38, 6.8, 6), Vector3(-29, 9.4, -9), Vector3(-36, 8.1, -13)]
+	var bases := [Vector3(-52, 9.5, -6), Vector3(-49, 10.5, 4), Vector3(-56, 8.8, 8), Vector3(-47, 11.0, -12), Vector3(-54, 10.0, -16)]   # far back (Jon): specks on the horizon, not visitors
 	var w := 0.85
 	var h := 0.82
 	for gi in bases.size():
@@ -380,6 +424,106 @@ func _boat_mesh() -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+## The headland heightfield (deck-local: the terrace occupies x -7.3..-4, so the
+## skirt starts tucked under it at -6.9 and runs out to -21; z spans past the
+## room both ways and the point falls off into the sea beyond |z| 9.
+func _headland_mesh(d: Dictionary) -> ArrayMesh:
+	var drop: float = d["drop"]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rows := [0.0, 0.02, 0.05, 0.09, 0.14, 0.2, 0.27, 0.35, 0.44, 0.54, 0.65, 0.77, 0.9, 1.0]
+	var cols := 30
+	var pts: Array = []
+	for ri in rows.size():
+		var sf: float = rows[ri]
+		var lx := -6.9 - sf * 14.1
+		var row: Array = []
+		for ci in cols + 1:
+			var lz := -15.0 + 30.0 * float(ci) / float(cols)
+			var fall := 1.0 - smoothstep(9.0, 15.0, absf(lz)) * 0.85
+			var y := -0.12 - drop * pow(sf, 1.15) * fall   # apron profile: a rocky slope you can READ from above, not a plumb drop that hides under the railing
+			var amp := 0.55 * pow(sin(PI * clampf(sf, 0.0, 1.0)), 0.7) * smoothstep(0.03, 0.25, sf)   # smooth lip where it tucks under the balcony
+			var n := sin(lx * 1.7 + lz * 2.3) * 0.5 + sin(lx * 0.6 - lz * 1.1) * 0.35 + sin((lx + lz) * 3.1) * 0.15
+			y += n * amp
+			y = lerpf(y, roundf(y / 0.55) * 0.55, 0.30 * clampf(amp * 2.0, 0.0, 1.0))
+			if ri == 0:
+				y = -0.12
+			row.append(Vector3(lx, y, lz))
+		pts.append(row)
+	for ri in rows.size() - 1:
+		for ci in cols:
+			_head_quad(st, pts[ri][ci], pts[ri][ci + 1], pts[ri + 1][ci + 1], pts[ri + 1][ci])
+	st.generate_normals()
+	return st.commit()
+
+func _head_quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, e: Vector3) -> void:
+	for v in [a, b, c, a, c, e]:
+		var wet := smoothstep(-3.5, -0.2, v.y)
+		st.set_color(Color(0.45, 0.5, 0.52).lerp(Color(1, 1, 1), wet))
+		st.set_uv(Vector2(v.z * 0.13, -v.y * 0.22))
+		st.add_vertex(v)
+
+## A flat wash band at the waterline (positioned at wy + 0.06 by the caller).
+## u runs 0 at the cliff foot -> 1 out at sea, so the drift shader's scroll
+## walks the foam ASHORE; v tiles the streaks along the coast.
+func _foam_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var xs := [-11.2, -12.6, -14.0, -15.6]   # centred where the apron meets the water
+	var cols := 20
+	for ri in xs.size() - 1:
+		for ci in cols:
+			var z0 := -13.0 + 26.0 * float(ci) / float(cols)
+			var z1 := -13.0 + 26.0 * float(ci + 1) / float(cols)
+			var u0: float = (-11.2 - xs[ri]) / 4.4
+			var u1: float = (-11.2 - xs[ri + 1]) / 4.4
+			var v0 := float(ci) / float(cols) * 5.0
+			var v1 := float(ci + 1) / float(cols) * 5.0
+			var a := Vector3(xs[ri], 0, z0)
+			var b := Vector3(xs[ri], 0, z1)
+			var c := Vector3(xs[ri + 1], 0, z1)
+			var e := Vector3(xs[ri + 1], 0, z0)
+			var uvs := {a: Vector2(u0, v0), b: Vector2(u0, v1), c: Vector2(u1, v1), e: Vector2(u1, v0)}
+			for vtx in [a, b, c, a, c, e]:
+				st.set_uv(uvs[vtx])
+				st.add_vertex(vtx)
+	return st.commit()
+
+var _foam_tex: Texture2D = null
+
+## Streaky foam alpha: stretched soft blobs, edges faded in the texture itself so
+## the wash band melts into the water at both borders.
+func _foam_texture() -> Texture2D:
+	if _foam_tex:
+		return _foam_tex
+	var w := 512
+	var h := 256
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(1, 1, 1, 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	for i in 130:
+		var cx := rng.randi_range(0, w - 1)
+		var cy := rng.randi_range(0, h - 1)
+		var rx := rng.randi_range(16, 54)
+		var ry := maxi(3, rx / rng.randi_range(4, 7))
+		for x in range(maxi(0, cx - rx), mini(w, cx + rx)):
+			for y in range(maxi(0, cy - ry), mini(h, cy + ry)):
+				var dd := Vector2(float(x - cx) / float(rx), float(y - cy) / float(ry)).length()
+				if dd < 1.0:
+					var p := img.get_pixel(x, y)
+					p.a = minf(1.0, p.a + (1.0 - dd) * 0.5)
+					img.set_pixel(x, y, p)
+	for x in w:
+		for y in h:
+			var p := img.get_pixel(x, y)
+			var fx := sin(PI * float(x) / float(w))
+			var fy := sin(PI * float(y) / float(h))
+			p.a *= pow(fx, 0.7) * pow(fy, 0.5)
+			img.set_pixel(x, y, p)
+	_foam_tex = ImageTexture.create_from_image(img)
+	return _foam_tex
 
 func _seal_vista_node(mi: MeshInstance3D) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

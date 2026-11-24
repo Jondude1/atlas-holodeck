@@ -76,6 +76,7 @@ func step(dt: float) -> void:
 			global_position.y = _settle_to
 			_settle_to = -1.0
 			set_process(false)
+			Sfx.play(self, "tap")   # R7-4: set down with a soft knock
 
 ## The resting height of a point in the room (world XZ in, support Y out). Mirrors the
 ## rig's furniture map: bench run, holo table, suit pads, else the floor.
@@ -84,7 +85,7 @@ static func support_height(p: Vector3) -> float:
 		return 0.9475   # either bench slab
 	if absf(p.x) <= 1.35 and p.z > -2.3 and p.z < -0.8:
 		return 0.951   # HoloTable.TOP_Y
-	for pad in [[-2.95, -4.15], [2.95, -4.15]]:
+	for pad in [[-2.5, -4.3], [2.5, -4.3]]:
 		if Vector2(p.x, p.z).distance_to(Vector2(pad[0], pad[1])) < 0.6:
 			return 0.078
 	return 0.0

@@ -148,6 +148,7 @@ func _on_done(job_id: String) -> void:
 	_refresh_station()
 	if _presence:
 		_presence.celebrate()
+		_presence.drift_visit(Vector3(-1.35, 0.02, -2.35), 7.0)   # R7-4: it comes to look at the new part
 
 ## Polls the job so completion is caught even if the socket dropped (or the hub is reached by LAN only for REST).
 func _poll(job_id: String) -> void:
@@ -317,6 +318,8 @@ func select(m: Node3D) -> void:
 	if _active != null and _active != m and not _active.call("is_parked"):
 		_active.call("park", Vector3(vacated.x, _active.position.y, vacated.z))
 	_active = m
+	_clear_measure()
+	Fx.set_section(1000.0)
 	m.call("reset_pose", 0.7)
 	_retarget(m)
 	_log("bench select: %s now active" % m.name)
@@ -538,3 +541,184 @@ func restore_world() -> void:
 		m.set("world_solid", true)
 		_solid = m
 		_log("restored world object '%s' from the headset cache" % String(m.get("model_name")))
+
+# ------------------------------------------------------------------ R7-3 bench tools
+
+var _measure_armed := false
+var _pins: Array[Vector3] = []
+var _pin_nodes: Array = []          # [pinA, pinB, tape, label], built on first use
+var _board: RefBoard = null
+
+func measure_armed() -> bool:
+	return _measure_armed
+
+func set_measure(armed: bool) -> void:
+	_measure_armed = armed
+	_pins.clear()
+	_measure_refresh()
+
+func _clear_measure() -> void:
+	_pins.clear()
+	_measure_refresh()
+
+## Drop a tape pin where the ray strikes the active model's parts (nearest AABB
+## face — the tape measures overall extents point-to-point). Third click restarts.
+func measure_pick(origin: Vector3, dir: Vector3) -> bool:
+	if not _measure_armed or _active == null:
+		return false
+	var best_t := INF
+	var best_p := Vector3.ZERO
+	for p in _active.get("_parts"):
+		var mi := p as MeshInstance3D
+		if mi == null:
+			continue
+		var aabb := mi.global_transform * mi.get_aabb()
+		var t := _ray_aabb(origin, dir, aabb)
+		if t >= 0.0 and t < best_t:
+			best_t = t
+			best_p = origin + dir * t
+	if best_t == INF:
+		return false
+	if _pins.size() >= 2:
+		_pins.clear()
+	_pins.append(best_p)
+	_measure_refresh()
+	Sfx.play(self, "tick")
+	return true
+
+func measure_text() -> String:
+	if _pins.size() < 2:
+		return ""
+	var inches := _pins[0].distance_to(_pins[1]) * 39.3700787
+	var t := Units.len_in(inches, inches >= 24.0)
+	return t if inches >= 24.0 else t + " IN"   # house convention (Units.dims_line): the unit rides the line
+
+static func _ray_aabb(o: Vector3, d: Vector3, b: AABB) -> float:
+	var tmin := 0.0
+	var tmax := INF
+	for ax in 3:
+		var lo: float = b.position[ax]
+		var hi: float = lo + b.size[ax]
+		if absf(d[ax]) < 0.000001:
+			if o[ax] < lo or o[ax] > hi:
+				return -1.0
+		else:
+			var inv := 1.0 / d[ax]
+			var t1 := (lo - o[ax]) * inv
+			var t2 := (hi - o[ax]) * inv
+			if t1 > t2:
+				var tmp: float = t1
+				t1 = t2
+				t2 = tmp
+			tmin = maxf(tmin, t1)
+			tmax = minf(tmax, t2)
+			if tmin > tmax:
+				return -1.0
+	return tmin
+
+func _measure_refresh() -> void:
+	if _pin_nodes.is_empty():
+		if _pins.is_empty():
+			return
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(0.85, 0.97, 1.0)
+		var sm := SphereMesh.new()
+		sm.radius = 0.013
+		sm.height = 0.026
+		sm.radial_segments = 10
+		sm.rings = 5
+		var pa := MeshInstance3D.new()
+		pa.name = "TapePinA"
+		pa.mesh = sm
+		pa.material_override = mat
+		var pb := MeshInstance3D.new()
+		pb.name = "TapePinB"
+		pb.mesh = sm
+		pb.material_override = mat
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.005, 0.005, 1.0)
+		var tape := MeshInstance3D.new()
+		tape.name = "TapeLine"
+		tape.mesh = bm
+		tape.material_override = mat
+		var lab := Label3D.new()
+		lab.name = "TapeLabel"
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.pixel_size = 0.0021
+		lab.font = load(Tokens.FONT_BOLD)
+		lab.font_size = 64
+		lab.modulate = Color(0.85, 0.97, 1.0)
+		lab.outline_size = 8
+		lab.outline_modulate = Color(0.02, 0.05, 0.09)
+		for n in [pa, pb, tape, lab]:
+			n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			get_parent().add_child(n)
+		_pin_nodes = [pa, pb, tape, lab]
+	var pa: MeshInstance3D = _pin_nodes[0]
+	var pb: MeshInstance3D = _pin_nodes[1]
+	var tape: MeshInstance3D = _pin_nodes[2]
+	var lab: Label3D = _pin_nodes[3]
+	pa.visible = _pins.size() >= 1
+	pb.visible = _pins.size() >= 2
+	tape.visible = _pins.size() >= 2
+	lab.visible = _pins.size() >= 2
+	if _pins.size() >= 1:
+		pa.global_position = _pins[0]
+	if _pins.size() >= 2:
+		pb.global_position = _pins[1]
+		var a: Vector3 = _pins[0]
+		var b: Vector3 = _pins[1]
+		var mid := (a + b) * 0.5
+		var dirv := b - a
+		tape.global_position = mid
+		tape.scale = Vector3(1, 1, dirv.length())
+		if dirv.length() > 0.001:
+			var up := Vector3.UP
+			if absf(dirv.normalized().dot(Vector3.UP)) > 0.95:
+				up = Vector3.RIGHT
+			tape.global_transform = Transform3D(Basis.looking_at(dirv.normalized(), up), mid)
+			tape.scale = Vector3(1, 1, dirv.length())
+		lab.global_position = mid + Vector3(0, 0.055, 0)
+		lab.text = measure_text()
+
+## Section view: v in 0..1 sweeps a clip plane down through the active model.
+func set_section(v: float) -> void:
+	if v <= 0.001 or _active == null:
+		Fx.set_section(1000.0)
+		return
+	var box := AABB()
+	var first := true
+	for p in _active.get("_parts"):
+		var mi := p as MeshInstance3D
+		if mi == null:
+			continue
+		var aabb := mi.global_transform * mi.get_aabb()
+		if first:
+			box = aabb
+			first = false
+		else:
+			box = box.merge(aabb)
+	if first:
+		return
+	Fx.set_section(lerpf(box.position.y + box.size.y, box.position.y + box.size.y * 0.03, v))
+
+## Reference board: a picture off the wall, standing on the table (toggle).
+func toggle_board() -> bool:
+	if _board:
+		_board.queue_free()
+		_board = null
+		return false
+	var texs: Array = []
+	for p in WallWidgets.PICTURE_PATHS:
+		if ResourceLoader.exists(p):
+			texs.append(load(p))
+	if texs.is_empty():
+		return false
+	_board = RefBoard.new()
+	_board.name = "RefBoard"
+	get_parent().add_child(_board)
+	_board.build(texs)
+	_board.global_position = _table.global_position + Vector3(0.92, HoloTable.TOP_Y, 0.06)
+	_board.rotation.y = -0.32
+	return true

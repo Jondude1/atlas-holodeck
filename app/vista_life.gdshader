@@ -16,12 +16,12 @@ void vertex() {
 	float phase = COLOR.r * 6.28318;
 	if (mode < 0.5) {
 		float a = TIME * (0.025 + COLOR.b * 0.02) + phase;
-		float r = 9.0 + COLOR.g * 9.0;
+		float r = 6.0 + COLOR.g * 6.0;
 		VERTEX += vec3(cos(a) * r, sin(TIME * 0.3 + phase * 3.0) * 0.8, sin(a) * r);
 		VERTEX.y += sin(TIME * (2.0 + COLOR.b * 1.6) + phase * 7.0) * abs(UV.x - 0.5) * 1.1;
 		fade = 1.0;
 	} else {
-		float t = fract(TIME * 0.004 + COLOR.r);
+		float t = fract(TIME * 0.0026 + COLOR.r);
 		VERTEX.z += mix(-27.0, 27.0, t);
 		VERTEX.y += sin(TIME * 0.9 + phase) * 0.07;
 		fade = sin(3.14159 * t);

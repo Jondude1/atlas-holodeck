@@ -33,6 +33,7 @@ const FILL_ENERGY := 0.55
 const RIM_ENERGY := 0.95
 
 var inset_mat: ShaderMaterial   # grid shader on the display inset (main.gd drives its fade)
+var _pulse_t := 1.0               # R7-4: tabletop tap pulse, 0..1 (1 = spent)
 var _ti_mat: StandardMaterial3D
 var _apron_mat: StandardMaterial3D
 var _strip_mat: ShaderMaterial
@@ -49,6 +50,7 @@ var _motes: GPUParticles3D
 var _labels := {}
 
 func _ready() -> void:
+	add_to_group("holo_table")
 	_build_body()
 	_build_inset()
 	_build_light()
@@ -331,9 +333,30 @@ func _update_glow(delta: float) -> void:
 	_col_mat.set_shader_parameter("fade", _glow_alpha)
 	_glow_motes.emitting = _glow_alpha > 0.4
 
+## R7-4: a hand tapping the tabletop gets an answer — a knock and a ring of
+## light from the tap point. prev/now are world hand positions across one frame;
+## only a DOWNWARD crossing of the surface band counts (no hover false-fires).
+func tap_at(prev: Vector3, now: Vector3) -> bool:
+	var lp := to_local(now)
+	var pp := to_local(prev)
+	if absf(lp.x) > 1.22 or absf(lp.z) > 0.61:
+		return false
+	if lp.y < TOP_Y - 0.01 or lp.y > TOP_Y + 0.055 or pp.y <= TOP_Y + 0.055:
+		return false
+	_pulse_t = 0.0
+	if inset_mat:
+		inset_mat.set_shader_parameter("hot_point", Vector2(lp.x, lp.z))
+	Sfx.play(self, "tap")
+	return true
+
 func _process(delta: float) -> void:
 	_ring_pivot.rotate_y(deg_to_rad(RING_DEG_PER_SEC) * delta)
 	_update_glow(delta)
+	if _pulse_t < 1.0:
+		_pulse_t = minf(_pulse_t + delta / 0.6, 1.0)
+		if inset_mat:
+			var k := 1.0 - _pulse_t
+			inset_mat.set_shader_parameter("hot_pulse", k * k * 0.9)
 
 ## The 3-light rig, for the vista system's per-vista mood tints (Round 5).
 func mood_lights() -> Array:

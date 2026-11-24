@@ -40,6 +40,7 @@ var _vel := Vector2.ZERO             # smoothed plane velocity, m/s (table space
 var _spin := 0.0                     # smoothed yaw rate, rad/s
 var _prev_pos := Vector2.ZERO
 var _prev_yaw := 0.0
+var _snap_step := -100000   # R7-3: last 15-degree yaw band crossed (snap feedback)
 var _have_prev := false
 var _settle_t := 0.0
 var _settle_from := Transform3D.IDENTITY
@@ -154,6 +155,14 @@ func _step_plane(dt: float) -> void:
 	var yaw := _hand_yaw(_hands[0]) + _yaw_off
 	position = Vector3(target.x, HoloTable.TOP_Y, target.y)
 	rotation = Vector3(0.0, yaw, 0.0)
+	# R7-3 snap feedback: a tick in the hand each time the turn crosses a 15° line,
+	# so a square corner FEELS square before you read it.
+	var snap_now := int(floor(rad_to_deg(yaw) / 15.0))
+	if _snap_step != -100000 and snap_now != _snap_step:
+		if _hands[0].has_method("buzz"):
+			_hands[0].buzz(0.012, 0.3)
+		Sfx.play(self, "tick")
+	_snap_step = snap_now
 	if _have_prev and dt > 0.0:
 		var k := 1.0 - exp(-dt / VEL_SMOOTH)
 		_vel = _vel.lerp((target - _prev_pos) / dt, k)

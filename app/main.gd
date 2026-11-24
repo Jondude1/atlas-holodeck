@@ -68,6 +68,7 @@ func _ready() -> void:
 	_bench = CadBench.new()
 	_bench.name = "CadBench"
 	add_child(_bench)
+	_bundled_demo_swap()
 	_bench.setup(_table, _model, _panel, _hud, _voice)
 	_bench.bind_presence(_room.presence())
 	# R6-2: the wall widgets (movable readouts/pictures on the side walls)
@@ -264,3 +265,28 @@ func _on_labels_beat() -> void:
 func _check_hub() -> void:
 	var ok: bool = await Hub.probe(self)
 	_table.set_link("LINK — HUB OK · %s" % Hub.link if ok else "LINK — LOCAL ONLY")
+
+## Jon (2026-11-24): the Star Destroyer demos the table, not the bracket. When
+## its converted GLB is bundled under res://demo/, it takes the stage spot and
+## the bracket retires (hidden, never benched). No bundle -> the bracket, as before.
+func _bundled_demo_swap() -> void:
+	if not ResourceLoader.exists("res://demo/stardestroyer.glb"):
+		return
+	var bytes := FileAccess.get_file_as_bytes("res://demo/stardestroyer.glb")
+	var f := FileAccess.open("res://demo/stardestroyer.json", FileAccess.READ)
+	if bytes.is_empty() or f == null:
+		return
+	var manifest: Variant = JSON.parse_string(f.get_as_text())
+	if not (manifest is Dictionary):
+		return
+	var m := Node3D.new()
+	m.set_script(preload("res://cad_model.gd"))
+	m.name = "DemoDestroyer"
+	_table.add_child(m)
+	m.setup(bytes, manifest)
+	if not m.load_ok:
+		m.queue_free()
+		return
+	m.position = _model.position
+	_model.visible = false
+	_model = m

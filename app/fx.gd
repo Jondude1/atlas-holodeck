@@ -191,3 +191,9 @@ static func emissive(c: Color, energy: float) -> StandardMaterial3D:
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.albedo_color = Color(c.r * energy, c.g * energy, c.b * energy)
 	return m
+
+## R7-3 section view: one clip plane for every hologram part, set on the two
+## shared materials (R4-2) so the whole bench sections together. 1000 = off.
+static func set_section(y: float) -> void:
+	part_material().set_shader_parameter("clip_y", y)
+	mesh_part_material().set_shader_parameter("clip_y", y)

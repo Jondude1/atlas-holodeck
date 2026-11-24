@@ -15,7 +15,8 @@ instance uniform float wire = 1.0;   // overall visibility (beat 1: wireframe ap
 instance uniform float scan = 1.2;   // scan-plane height, 0..1 across y0..y1
 instance uniform float y0 = 0.0;     // world-space y range of the whole model
 instance uniform float y1 = 1.0;
-instance uniform float flash = 0.0;  // 1 = edges white-hot, 0 = settled to line colour
+instance uniform float flash = 0.0;
+uniform float clip_y = 1000.0; // R7-3 section view: fragments above this world Y are cut (1000 = off)  // 1 = edges white-hot, 0 = settled to line colour
 uniform float line_density = 360.0; // R3-8: fine horizontal scanlines per metre (world Y), matches holo_mesh
 
 varying vec3 vpos;
@@ -27,6 +28,7 @@ void vertex() {
 }
 
 void fragment() {
+	if (wy > clip_y) discard; // R7-3 section plane
 	vec3 q = aabb_half - abs(vpos);
 	vec3 near = 1.0 - smoothstep(vec3(edge_w * 0.5), vec3(edge_w), q);
 	float e = clamp(near.x * near.y + near.y * near.z + near.x * near.z, 0.0, 1.0);

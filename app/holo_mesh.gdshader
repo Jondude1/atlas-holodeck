@@ -16,7 +16,8 @@ instance uniform float wire = 1.0;   // overall visibility (also used as the per
 instance uniform float scan = 1.2;   // scan-plane height, 0..1 across y0..y1
 instance uniform float y0 = 0.0;     // world-space y range of the whole model
 instance uniform float y1 = 1.0;
-instance uniform float flash = 0.0;  // 1 = rim white-hot, 0 = settled to line colour
+instance uniform float flash = 0.0;
+uniform float clip_y = 1000.0; // R7-3 section view: fragments above this world Y are cut (1000 = off)  // 1 = rim white-hot, 0 = settled to line colour
 
 varying float wy;
 
@@ -25,6 +26,7 @@ void vertex() {
 }
 
 void fragment() {
+	if (wy > clip_y) discard; // R7-3 section plane
 	float ndv = abs(dot(normalize(NORMAL), normalize(VIEW)));
 	float fres = pow(1.0 - clamp(ndv, 0.0, 1.0), rim_power);
 

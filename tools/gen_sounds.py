@@ -54,3 +54,11 @@ write("explode.wav", tone(280, 0.5, 0.25, attack=0.02, decay=3.0, freq_end=760))
 # error: two low pulses
 write("error.wav", tone(170, 0.16, 0.4, attack=0.006, decay=2.0) + [0.0] * int(RATE * 0.05) + tone(150, 0.22, 0.4, attack=0.006, decay=2.5))
 print("R3-7 sounds written")
+
+# tap: a soft knock — short low thump with a fingertip click at the head (R7-4)
+import random as _rnd
+_r = _rnd.Random(7)
+_knock = tone(170, 0.09, 0.55, attack=0.002, decay=11)
+for _i in range(min(120, len(_knock))):
+    _knock[_i] += _r.uniform(-1, 1) * 0.18 * (1.0 - _i / 120.0)
+write("tap.wav", _knock)

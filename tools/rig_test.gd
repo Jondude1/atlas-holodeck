@@ -37,18 +37,18 @@ func _run() -> void:
 	h = rig.head_xz()
 	_check(h.x >= 3.5 and h.x <= 3.72, "side wall holds (head x=%.2f)" % h.x)
 	# 2b: the suit pad guards the opening's flank — walking its lane stops at the pad
-	origin.global_position = Vector3(2.6, 0, 0.2)   # head at (2.9, 0.4), the pad's lane
+	origin.global_position = Vector3(2.2, 0, 0.2)   # head at (2.5, 0.4), dead centre of the pad's lane
 	for i in 40:
 		rig.apply_move(Vector3(0, 0, -0.25))
 	h = rig.head_xz()
-	_check(h.y > -3.75 and h.y < -3.4, "suit pad blocks its lane (head z=%.2f)" % h.y)
-	# 3: through the opening (head x = 1.9 — between the table block and the pad's reach)
-	#    onto the terrace; the railing line holds
-	origin.global_position = Vector3(1.6, 0, 0.2)   # head at (1.9, 0.4)
+	_check(h.y > -3.8 and h.y < -3.45, "suit pad blocks its lane (head z=%.2f)" % h.y)
+	# 3: through the opening (head x = 1.62 — the corridor between the table block's
+	#    edge at 1.55 and the pad guard's reach at 1.82) onto the terrace; railing holds
+	origin.global_position = Vector3(1.32, 0, 0.2)   # head at (1.62, 0.4)
 	for i in 60:
 		rig.apply_move(Vector3(0, 0, -0.25))
 	h = rig.head_xz()
-	_check(h.y < -7.7 and h.y > -8.2, "terrace reached, railing holds (head z=%.2f)" % h.y)
+	_check(h.y < -8.2 and h.y > -8.7, "terrace reached, railing holds (head z=%.2f)" % h.y)
 	# 4: snap turn pivots on the head — head world position must not move
 	var before: Vector2 = rig.head_xz()
 	rig.apply_turn(deg_to_rad(-30.0))

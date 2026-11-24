@@ -103,12 +103,12 @@ func build(table_xz: Vector2) -> void:
 ## Round 6: two ring-lit display platforms flanking the FAR opening, inside the room —
 ## the suit bay, as the picture has it. (Suits arrive via the image-to-3D pipeline.)
 func _suit_platforms() -> void:
-	for px in [-2.95, 2.95]:
-		lit.add_cyl(Vector3(px, 0.035, -4.15), 0.58, 0.07, _ti(0.5), 28)
-		lit.add_cyl(Vector3(px, 0.075, -4.15), 0.5, 0.012, _deep(0.3), 28)
+	for px in [-2.5, 2.5]:
+		lit.add_cyl(Vector3(px, 0.035, -4.3), 0.58, 0.07, _ti(0.5), 28)
+		lit.add_cyl(Vector3(px, 0.075, -4.3), 0.5, 0.012, _deep(0.3), 28)
 		var ring := Color(Tokens.HOLO_LINE.r * 0.32, Tokens.HOLO_LINE.g * 0.32, Tokens.HOLO_LINE.b * 0.32)
-		emi.add_torus(Vector3(px, 0.078, -4.15), 0.53, 0.012, ring, 48, 6)
-		emi.add_cyl(Vector3(px, 0.004, -4.15), 0.64, 0.008, ring * 0.35, 28)
+		emi.add_torus(Vector3(px, 0.078, -4.3), 0.53, 0.012, ring, 48, 6)
+		emi.add_cyl(Vector3(px, 0.004, -4.3), 0.64, 0.008, ring * 0.35, 28)
 
 ## Bare benches along both side walls — dark slabs on block legs, an emissive edge line,
 ## nothing on them but what Jon puts there (the props + the arm, on the right).

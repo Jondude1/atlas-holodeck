@@ -17,7 +17,7 @@ const HEIGHT := 3.4
 const OPEN_X0 := -2.9                  # Round 6: the opening spans the BACK wall (the picture)
 const OPEN_X1 := 2.9
 const OPEN_TOP := 2.9                  # opening head height (header above)
-const TERRACE_Z := -8.3                # terrace floor outer edge, beyond the back wall
+const TERRACE_Z := -8.8                # terrace floor outer edge, beyond the back wall
 const TEX_WALL: Texture2D = preload("res://textures/wall-concrete.png")   # R7-0: photographic surfaces read real; flat tints read CG
 const TEX_FLOOR: Texture2D = preload("res://textures/floor-stone.png")
 var _wall_mat_cache: StandardMaterial3D = null
@@ -206,26 +206,19 @@ func _build_walls() -> void:
 	_lab_strip(Vector3(HALF_X - 0.016, 1.5, right_z), Vector3(0.03, 1.2, 0.03))
 
 ## Round 6: the BACK wall carries the opening (OPEN_X0..OPEN_X1, floor to OPEN_TOP),
-## framed in titanium with a dim cyan light line, opening onto a railed terrace — the
-## walk-in picture's composition. Segments share one wall material so the panelling
-## reads continuous; frame, railing and trim merge into the lab's builders.
+## opening onto a railed terrace — the walk-in picture's composition: the wall
+## simply ends (no frame — Jon). Segments share one wall material so the
+## panelling reads continuous; railing and trim merge into the lab's builders.
 func _build_opening() -> void:
 	var mat := _wall_mat()
 	_mesh("WallBackLeft", _wall_segment_back(-HALF_X, OPEN_X0, 0.0, HEIGHT), mat, Vector3.ZERO)
 	_mesh("WallBackRight", _wall_segment_back(OPEN_X1, HALF_X, 0.0, HEIGHT), mat, Vector3.ZERO)
 	_mesh("WallBackHeader", _wall_segment_back(OPEN_X0, OPEN_X1, OPEN_TOP, HEIGHT), mat, Vector3.ZERO)
 	var ti := Color(0.32, 0.38, 0.46)
-	var k := STRIP_ENERGY / Lab.E_BASE
-	var line := Color(Tokens.HOLO_LINE.r * k, Tokens.HOLO_LINE.g * k, Tokens.HOLO_LINE.b * k)
-	# machined frame: jambs + head beam + threshold plate
-	for jx in [OPEN_X0 - 0.05, OPEN_X1 + 0.05]:
-		_lab.lit.add_box(Vector3(jx, OPEN_TOP * 0.5, Z_BACK), Vector3(0.3, OPEN_TOP, 0.24), ti)
-	_lab.lit.add_box(Vector3(0, (OPEN_TOP + HEIGHT) * 0.5, Z_BACK), Vector3(OPEN_X1 - OPEN_X0 + 0.3, HEIGHT - OPEN_TOP, 0.24), ti)
+	# NO frame (Jon, 2026-11-24): the machined jambs + head beam read as a grey
+	# archway blocking the view — the wall simply ends, like the picture. Only a
+	# flush threshold plate stays, as the floor's transition to the terrace.
 	_lab.lit.add_box(Vector3(0, 0.012, Z_BACK), Vector3(OPEN_X1 - OPEN_X0, 0.024, 0.34), ti * 0.8)
-	# the cyan light line tracing the opening's inner edge (dim — an accent, not a frame)
-	for jx in [OPEN_X0 + 0.11, OPEN_X1 - 0.11]:
-		_lab.emi.add_box(Vector3(jx, OPEN_TOP * 0.5, Z_BACK + 0.12), Vector3(0.025, OPEN_TOP - 0.06, 0.025), line * 0.5)
-	_lab.emi.add_box(Vector3(0, OPEN_TOP - 0.04, Z_BACK + 0.12), Vector3(OPEN_X1 - OPEN_X0 - 0.2, 0.025, 0.025), line * 0.5)
 	# terrace floor: the room's plate extended past the wall line to the railing
 	var tmat := _lit(Color(0.8, 0.83, 0.88), 0.1, 0.45, TEX_FLOOR)
 	tmat.uv1_scale = Vector3(3.0, 1.2, 1.0)
@@ -233,6 +226,9 @@ func _build_opening() -> void:
 	var terrace := PlaneMesh.new()
 	terrace.size = Vector2(HALF_X * 2.0, Z_BACK - TERRACE_Z)
 	_mesh("Terrace", terrace, tmat, Vector3(0, -0.005, (Z_BACK + TERRACE_Z) * 0.5))
+	# the balcony's fascia: a solid edge under the terrace lip, so sightlines
+	# diving past the edge meet structure, not the headland's raw top row (R7-6)
+	_lab.lit.add_box(Vector3(0, -0.26, TERRACE_Z - 0.03), Vector3(HALF_X * 2.0, 0.52, 0.1), ti * 0.7)
 	# railing across the outer edge + closing rails at both ends, a lit lip on the top rail
 	var rz := TERRACE_Z + 0.15
 	for i in 7:
@@ -242,7 +238,9 @@ func _build_opening() -> void:
 	for e in [-3.95, 3.95]:
 		_lab.lit.add_box(Vector3(e, 0.97, (rz + Z_BACK) * 0.5), Vector3(0.06, 0.05, Z_BACK - rz), ti)
 		_lab.lit.add_box(Vector3(e, 0.48, Z_BACK + 0.05), Vector3(0.05, 0.96, 0.05), ti)
-	_lab.emi.add_box(Vector3(0, 0.97, rz + 0.06), Vector3(7.9, 0.015, 0.02), line * 0.7)
+	var k2 := STRIP_ENERGY / Lab.E_BASE
+	var rail_line := Color(Tokens.HOLO_LINE.r * k2, Tokens.HOLO_LINE.g * k2, Tokens.HOLO_LINE.b * k2)
+	_lab.emi.add_box(Vector3(0, 0.97, rz + 0.06), Vector3(7.9, 0.015, 0.02), rail_line * 0.7)
 
 ## One piece of the back wall in world space at z = Z_BACK, facing +Z, UVs continuing the
 ## full-wall texture (u from world x, v = 1 at the floor).
