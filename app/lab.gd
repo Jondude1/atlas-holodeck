@@ -79,14 +79,17 @@ func build(table_xz: Vector2) -> void:
 	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.032), Fx.radial_texture(128, 2.6))
 	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 0.95)
 	add_child(gloss)
-	# R8: daylight spill from the opening — a wide soft satin sheen across the polished floor
+	# R8 + feel round: daylight spill from the opening — an elongated pool of the
+	# coast's daylight colour reaching in from the threshold and dying out ~3 m
+	# inside the room (Oculus Home research: fake the spill, let it fall off fast,
+	# or the room reads as outdoors). Tuned to the default coast/day vista.
 	var spill := MeshInstance3D.new()
 	spill.name = "VistaSpill"
 	var spm := PlaneMesh.new()
-	spm.size = Vector2(6.6, 4.0)
+	spm.size = Vector2(5.6, 3.0)
 	spill.mesh = spm
-	spill.material_override = Fx.glow_decal(Color(0.80, 0.86, 0.92, 0.085), Fx.radial_texture(128, 2.0))
-	spill.position = Vector3(0, 0.005, -3.45)
+	spill.material_override = Fx.glow_decal(Color(0.82, 0.87, 0.93, 0.10), Fx.radial_texture(128, 2.4))
+	spill.position = Vector3(0, 0.005, -3.55)
 	add_child(spill)
 
 	# R7-0: baked contact shadows — with no realtime shadow maps (Quest budget), soft

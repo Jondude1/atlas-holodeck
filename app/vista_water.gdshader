@@ -10,9 +10,11 @@ render_mode unshaded, depth_draw_opaque, fog_disabled;
 uniform sampler2D tex : filter_linear_mipmap, repeat_enable;
 uniform vec4 deep_color : source_color = vec4(0.02, 0.16, 0.28, 1.0);
 uniform vec4 spark_color : source_color = vec4(0.45, 0.85, 1.0, 1.0);
-uniform float glitter_z = -1.0;        // world-z centre of the glitter lane (runs outward in -x)
+uniform float glitter_x = 0.0;         // world-x centre of the glitter lane (the lane runs outward, away from the room, at the sun's side of the view)
 uniform float glitter_width = 14.0;
 uniform float speed = 1.0;
+uniform vec4 haze_color : source_color = vec4(0.74, 0.83, 0.90, 1.0);
+uniform float haze_amt = 0.0;          // feel round: far water hazes into the painting's air so geometry sea and painted sea meet as one ramp
 
 varying vec3 wpos;
 
@@ -43,7 +45,7 @@ void fragment() {
 	w += wave(p, vec2(1.0, -0.2), 5.5, 2.1 * speed) * 0.25;
 	float near_calm = smoothstep(8.0, 26.0, length(wpos.xz - vec2(0.0, -6.0)));
 	float sparkle = smoothstep(0.80, 0.99, w) * mix(0.10, 0.7, near_calm);
-	float lane = exp(-abs(wpos.z - glitter_z) / max(glitter_width, 0.1));
+	float lane = exp(-abs(wpos.x - glitter_x) / max(glitter_width, 0.1));
 	col += spark_color.rgb * sparkle * 0.16 * dist_fade;
 	col += spark_color.rgb * lane * sparkle * 0.22 * dist_fade;
 	// wash rolling ashore — bright bands travelling toward the cliffs (+z
@@ -52,5 +54,8 @@ void fragment() {
 	float streak = sin(wpos.z * 2.1 - TIME * 1.15 * speed + sin(wpos.x * 0.3 + TIME * 0.23 * speed) * 1.6) * 0.5 + 0.5;
 	float wash = shore * smoothstep(0.72, 0.97, streak);
 	col = mix(col, vec3(0.88, 0.95, 0.99), wash * 0.45);
+	// distance haze: by the time the geometry sea reaches the painting it has
+	// taken on the same pale air the painting's own horizon wears
+	col = mix(col, haze_color.rgb, smoothstep(18.0, 55.0, length(p)) * haze_amt);
 	ALBEDO = col;
 }

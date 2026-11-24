@@ -22,35 +22,49 @@ signal grade_changed(name: String)
 
 const CENTRE := Vector3(0, 0, -1)      # room centre: cards are cylindrical around it
 const FAR_R := 55.0
+const HORIZON_Y := 1.45                # feel round: THE horizon height (deck space) — a touch below standing eye, the elevated-coast dip; every vista's card_top puts its painted horizon here
 const ORDER: Array[String] = ["coast", "lake", "valley"]
 
 const DEFS := {
+	# Vista-feel round (Oculus Home research): "horizon" is the painting's horizon
+	# row (fraction from the image TOP); card_top is DERIVED from it so the painted
+	# horizon lands at deck y = HORIZON_Y on every vista — painting, water and sky
+	# dome share one horizon. "fog" now MATCHES the painted horizon colour, so real
+	# geometry hazes into the same air the painting breathes. "sun_az" (deck-local
+	# xz toward the sun) + "glitter_x" (world-x of the water's sun lane) + the
+	# dome's bright sector all agree on ONE sun per vista.
 	"coast": {
-		"tex": "res://vistas/vista-coast.png", "card_top": 15.5,
-		"sky_top": Color(0.24, 0.46, 0.72), "sky_horizon": Color(0.68, 0.80, 0.89), "sky_ground": Color(0.06, 0.16, 0.24),
-		"fog": Color(0.14, 0.15, 0.17), "ambient_energy": 0.46, "fog_density": 0.006,
+		"tex": "res://vistas/vista-coast.png", "card_top": 9.4, "horizon": 0.36,
+		"sky_top": Color(0.24, 0.46, 0.72), "sky_horizon": Color(0.68, 0.80, 0.89), "sky_ground": Color(0.10, 0.19, 0.27),
+		"fog": Color(0.66, 0.76, 0.85), "ambient_energy": 0.46, "fog_density": 0.006,
 		"omni_tint": Color(0.96, 0.98, 1.0), "omni_energy": 1.05,
 		"water_y": -4.2, "water_deep": Color(0.03, 0.20, 0.34), "water_spark": Color(0.65, 0.86, 0.95), "water_speed": 0.85,
 		"mist": Color(0.84, 0.90, 0.96), "mist_alpha": 0.28, "cloud_tint": Color(0.95, 0.97, 0.99), "boat": true,
 		"rock": Color(0.86, 0.89, 0.91), "drop": 9.5, "sea": [0.36, 0.82, 1.0],   # shader UV: v=0 at the TOP of the painting; the sea band is rows .36-.82
+		"haze": Color(0.74, 0.83, 0.90), "haze_near": 0.80, "haze_amt": 0.60, "edge": Color(0.50, 0.65, 0.82),
+		"sun_az": Vector2(-0.88, 0.47), "sun_tint": Color(0.95, 0.92, 0.82), "glitter_x": -6.0,
 	},
 	"lake": {
-		"tex": "res://vistas/vista-lake.png", "card_top": 14.5,
+		"tex": "res://vistas/vista-lake.png", "card_top": 12.2, "horizon": 0.49,
 		"sky_top": Color(0.05, 0.10, 0.22), "sky_horizon": Color(0.36, 0.48, 0.66), "sky_ground": Color(0.02, 0.05, 0.11),
-		"fog": Color(0.10, 0.12, 0.15), "ambient_energy": 0.38, "fog_density": 0.007,
+		"fog": Color(0.42, 0.54, 0.70), "ambient_energy": 0.38, "fog_density": 0.007,
 		"omni_tint": Color(0.86, 0.92, 1.0), "omni_energy": 0.95,
 		"water_y": -3.0, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,
 		"mist": Color(0.75, 0.85, 1.0), "mist_alpha": 0.5, "cloud_tint": Color(0.6, 0.7, 0.9), "boat": true,
 		"rock": Color(0.82, 0.86, 0.92), "drop": 7.0, "sea": [0.45, 0.75, 0.5],
+		"haze": Color(0.48, 0.60, 0.74), "haze_near": 0.78, "haze_amt": 0.45, "edge": Color(0.32, 0.44, 0.62),
+		"sun_az": Vector2(-0.80, -0.60), "sun_tint": Color(0.85, 0.80, 0.90), "glitter_x": 6.0,
 	},
 	"valley": {
-		"tex": "res://vistas/vista-valley.png", "card_top": 15.2,
+		"tex": "res://vistas/vista-valley.png", "card_top": 5.2, "horizon": 0.17,
 		"sky_top": Color(0.35, 0.54, 0.76), "sky_horizon": Color(0.90, 0.83, 0.68), "sky_ground": Color(0.08, 0.15, 0.10),
-		"fog": Color(0.14, 0.15, 0.14), "ambient_energy": 0.48, "fog_density": 0.006,
+		"fog": Color(0.80, 0.74, 0.60), "ambient_energy": 0.48, "fog_density": 0.006,
 		"omni_tint": Color(1.02, 0.98, 0.92), "omni_energy": 1.05,
 		"water_y": 999.0, "water_deep": Color(0.02, 0.2, 0.3), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(0.96, 0.94, 0.88), "mist_alpha": 0.38, "cloud_tint": Color(0.96, 0.95, 0.92), "boat": false,
 		"rock": Color(0.52, 0.56, 0.42), "drop": 8.5, "sea": [0.0, 0.0, 0.0],
+		"haze": Color(0.86, 0.80, 0.68), "haze_near": 0.34, "haze_amt": 0.22, "edge": Color(0.74, 0.70, 0.64),   # haze_amt lower than the water vistas: this painting already carries its own aerial perspective (layered ridges)
+		"sun_az": Vector2(-0.55, -0.83), "sun_tint": Color(1.0, 0.85, 0.60), "glitter_x": 0.0,
 	},
 }
 
@@ -167,6 +181,7 @@ func _apply_grade_statics(nm: String) -> void:
 		sm.set_shader_parameter("top_color", (d["sky_top"] as Color) * (g["sky"] as Color))
 		sm.set_shader_parameter("horizon_color", (d["sky_horizon"] as Color) * (g["sky"] as Color))
 		sm.set_shader_parameter("ground_color", (d["sky_ground"] as Color) * (g["sky"] as Color))
+		sm.set_shader_parameter("sun_color", (d["sun_tint"] as Color) * (g["sky"] as Color))
 
 func _apply_ambience(dur: float) -> void:
 	if _amb == null:
@@ -260,15 +275,19 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	sky_sh.set_shader_parameter("top_color", d["sky_top"])
 	sky_sh.set_shader_parameter("horizon_color", d["sky_horizon"])
 	sky_sh.set_shader_parameter("ground_color", d["sky_ground"])
+	sky_sh.set_shader_parameter("horizon_height", 0.005)   # feel round: the dome's horizon sits at the same eye-level line as the cards'
+	sky_sh.set_shader_parameter("sun_dir", d["sun_az"])
+	sky_sh.set_shader_parameter("sun_color", d["sun_tint"])
 	dome.material_override = sky_sh
 	_domes[nm] = sky_sh
 	_seal_vista_node(dome)
 	root.add_child(dome)
-	# far card: the painting itself
+	# far card: the painting itself — placed so its horizon row lands on
+	# HORIZON_Y, with a sky cap above the image stretching its top row upward
 	var top: float = d["card_top"]
 	var card := MeshInstance3D.new()
 	card.name = "FarCard"
-	card.mesh = _card_mesh(FAR_R, 132.0, top - 22.0, top, 32)
+	card.mesh = _far_card_mesh(FAR_R, 132.0, top - 22.0, top, top + 7.0, 32)
 	var cm := ShaderMaterial.new()
 	cm.shader = CARD_SHADER
 	cm.set_shader_parameter("tex", load(d["tex"]) as Texture2D)
@@ -276,6 +295,12 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	cm.set_shader_parameter("sea_lo", sea[0])
 	cm.set_shader_parameter("sea_hi", sea[1])
 	cm.set_shader_parameter("sway", sea[2])
+	cm.set_shader_parameter("haze_color", d["haze"])
+	cm.set_shader_parameter("haze_horizon", d["horizon"])
+	cm.set_shader_parameter("haze_near", d["haze_near"])
+	cm.set_shader_parameter("haze_strength", d["haze_amt"])
+	cm.set_shader_parameter("edge_color", d["edge"])
+	cm.set_shader_parameter("edge_fade", 0.10)
 	card.material_override = cm
 	_cards[nm] = cm
 	_seal_vista_node(card)
@@ -297,7 +322,9 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 		wm.set_shader_parameter("spark_color", d["water_spark"])
 		wm.set_shader_parameter("speed", d["water_speed"])
 		wm.set_shader_parameter("tex", TEX_OCEAN)
-		wm.set_shader_parameter("glitter_z", 0.0)
+		wm.set_shader_parameter("glitter_x", d["glitter_x"])
+		wm.set_shader_parameter("haze_color", d["haze"])
+		wm.set_shader_parameter("haze_amt", 0.38 if nm == "coast" else 0.30)
 		water.material_override = wm
 		_seal_vista_node(water)
 		root.add_child(water)
@@ -310,7 +337,7 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	var hm := StandardMaterial3D.new()
 	hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	hm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	hm.disable_fog = true
+	hm.disable_fog = false   # feel round: the cliffs take the same haze as everything else — their far reaches fade toward the horizon colour instead of ending at a hard line
 	hm.vertex_color_use_as_albedo = true
 	hm.albedo_texture = TEX_ROCK
 	hm.texture_repeat = true
@@ -362,7 +389,7 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	bm.set_shader_parameter("tex", _cloud_texture())
 	bm.set_shader_parameter("tint", d["cloud_tint"])
 	bm.set_shader_parameter("alpha_base", 0.85)
-	bm.set_shader_parameter("scroll_speed", 0.0016)
+	bm.set_shader_parameter("scroll_speed", 0.0008)   # feel round: the backdrop family moves at one glacial rate — present, but still at a glance
 	bm.set_shader_parameter("pulse", 0.0)
 	band.material_override = bm
 	_seal_vista_node(band)
@@ -376,6 +403,11 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	gm.shader = LIFE_SHADER
 	gm.set_shader_parameter("tex", TEX_GULL)
 	gm.set_shader_parameter("mode", 0.0)
+	# feel round: one 600 s master cycle — the boat crosses in [30, 290], the
+	# flock works the wind in [350, 470]; never both on stage together.
+	gm.set_shader_parameter("period", 600.0)
+	gm.set_shader_parameter("win_lo", 350.0)
+	gm.set_shader_parameter("win_hi", 470.0)
 	gulls.material_override = gm
 	_seal_vista_node(gulls)
 	root.add_child(gulls)
@@ -389,6 +421,9 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 		bom.set_shader_parameter("tex", TEX_BOAT)
 		bom.set_shader_parameter("mode", 1.0)
 		bom.set_shader_parameter("tint", Color(0.1, 0.12, 0.16, 1.0))
+		bom.set_shader_parameter("period", 600.0)
+		bom.set_shader_parameter("win_lo", 30.0)
+		bom.set_shader_parameter("win_hi", 290.0)
 		boat.material_override = bom
 		_seal_vista_node(boat)
 		root.add_child(boat)
@@ -567,6 +602,36 @@ func _card_mesh(radius: float, arc_deg: float, y0: float, y1: float, seg: int) -
 	for i in seg:
 		var b := i * 2
 		idx.append_array([b, b + 1, b + 2, b + 1, b + 3, b + 2])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## The far card: the painting mapped over [y0, y1] exactly as _card_mesh does,
+## plus a sky cap [y1, y2] whose UV stays pinned at the image's top row — the
+## painting's zenith colour stretches upward, so lowering the card to lock its
+## horizon never opens a gap between the painting and the dome.
+func _far_card_mesh(radius: float, arc_deg: float, y0: float, y1: float, y2: float, seg: int) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var idx := PackedInt32Array()
+	var half := deg_to_rad(arc_deg) * 0.5
+	var rows := [[y0, 1.0], [y1, 0.05], [y2, -0.02]]   # the cap samples the painting's top sky band (a near-vertical gradient — stretch-invisible) and ends below v=0 so the shader's edge blend tops out there
+	for i in seg + 1:
+		var a := -half + (2.0 * half) * float(i) / float(seg)
+		var p := Vector3(-cos(a), 0, sin(a)) * radius
+		var u := float(i) / float(seg)
+		for r in rows:
+			verts.append(Vector3(p.x, r[0], p.z))
+			uvs.append(Vector2(u, r[1]))
+	for i in seg:
+		var b := i * 3
+		idx.append_array([b, b + 1, b + 3, b + 1, b + 4, b + 3])        # painting strip
+		idx.append_array([b + 1, b + 2, b + 4, b + 2, b + 5, b + 4])    # sky cap strip
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
