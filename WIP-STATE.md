@@ -1,7 +1,57 @@
-# WIP-STATE — Atlas Holodeck (updated 2026-11-20)
+# WIP-STATE — Atlas Holodeck (updated 2026-11-24)
 
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
+
+## ROUND 5 (BRIEF-round5.md) — CHUNK A BUILT + VERIFIED 2026-11-24 (Helios)
+Jon rejected the enclosed Gemini garages; direction = ONE OPEN WALL to a living vista like
+the original Oculus Home, COAST chosen (concept-08), view SWAPPABLE. Research spec:
+~/workspace/research_notes/oculus-home-vista-spec-20261124/report.md (hybrid backdrop,
+≤10 calls + ~6 MB per vista, all resident, mood bundle swap; Godot Compatibility multipass
+=> device calls ≈ 2× mono). BUILT: room.gd — left wall is now pillars + header around a
+6.0 × 2.9 m opening (OPEN_Z0/Z1/TOP consts), titanium frame + cyan light line merged into
+lab builders, terrace floor (x −7.3..−4.0) + railing; lab.gd — left workbench REMOVED,
+_suit_platforms() (2 ring-lit pads flanking the opening; suits arrive via image-to-3D later).
+vista.gd (class VistaDeck) + vista_sky/water/drift.gdshader: per vista = gradient dome +
+painting on a 55 m cylindrical card (132° arc) + procedural water (coast/lake) + 2 mist
+banks + cloud band; all shader-TIME motion, unshaded, fog off, layer 2 only. Paintings:
+app/vistas/*.png (1536×672 Gemini masters, VRAM-compressed imports). Swap = panel VIEW
+button (ui_panel.bind_vista) -> visibility toggle + 0.6 s tween of Environment fog/ambient/
+sky colours + table omni tints (table.mood_lights()); mood numbers tuned so the interior
+keeps its dark character (coast ambient 0.5 / lake 0.35 / valley 0.45, fog_density per vista).
+GOTCHA hit: render_priority is NOT a MeshInstance3D property — assigning it aborted
+_build_vista mid-build (Nil roots); removed, depth sorting handles transparency order.
+VERIFIED: import clean; 6/6 headless suites PASS (panel needed the VIEW button at font 24,
+"VIEW: COAST" — the bottom row's min width is the constraint); perf probe idle 77/79/83
+(Round 3: 69/70/74 — delta = the visible vista + segments, inside budget); captures
+r5-coast-room / r5-coast-terrace / r5-lake-room / r5-valley-wide eyeballed GOOD.
+Exercise (mock hub) re-run for R5 in flight at checkpoint time — check builds/logs/exercise_r5.log.
+NEXT: export + deliver R5A APK; then Round 5B (locomotion, interactables, off-table
+solidify + permanence — specced in BRIEF-round5.md); R4-3 folds into future room work;
+R4-4 + R4-7 still open (SD re-run needs the tailnet proxy back).
+
+## ROUND 4 (BRIEF-round4.md) — IN PROGRESS 2026-11-24 (Jon's order: robust + compressed, all functionality kept)
+Audit first (tools/census.gd): boot 189 nodes / 63 meshes / 55 unique materials; trebuchet
+299 / 119 / 112. CHUNK 1 DONE + VERIFIED: R4-1 radial_texture cache in fx.gd (rest of R4-1's
+cache candidates proved unsafe on inspection — nearly every material is mutated by a fade or
+built per-texture; documented in BRIEF-round4.md). R4-2: holo.gdshader + holo_mesh.gdshader
+per-part uniforms (aabb/wire/scan/y0/y1/flash) converted to INSTANCE uniforms (mechanism
+probe-verified in Compatibility first: `instance uniform` syntax, set via
+set_instance_shader_parameter); Fx.part_material()/mesh_part_material() are now singletons;
+model.gd _mats array deleted (debug_scan() accessor added; 5 capture/perf tools updated).
+Census after: boot materials 55->53, trebuchet 112->84 (upper bound — census also counts GLB
+surface materials the renderer never uses under material_override). Suites: 6 headless PASS,
+labels_test PASS. DEFERRED to the R4-7 pass: stardestroyer_local re-run (its /tmp/sd fixture
+was wiped by a runtime restart; refetch from the hub is blocked while the tailnet proxy is
+down — egress + Pi API both 000 on 2026-11-24 ~08:57 ET; NOT an app regression).
+GARAGE (Jon, 2026-11-24): pixel-for-pixel asset ripping of Marvel's Iron Man VR DECLINED
+(copyrighted assets); Jon approved the ORIGINAL recreation instead — same layout/behaviour,
+own assets, his holo table centred. Gemini concept renders (via tools/gemini_image.py +
+custom.google-gemini key; models gemini-2.5-flash-image) in design/garage-concepts/
+01-wide / 02-table / 03-layout (+04–06) — ALL REJECTED by Jon; superseded by the open-wall
+direction, see ROUND 5 above. Asset pipeline research done: TRELLIS.2
+(MIT, HF demo ~1 model/day, needs decimation) or Tripo free tier for hero props via
+image-to-3D from the Gemini concepts. Garage build folds in R4-3 (room rebuild = static merge).
 
 ## ROUND 3 (BRIEF-round3.md, brief #19) — DONE 2026-11-20 ~13:17 ET (Helios takeover build)
 Stark fidelity + living lab, table-first per Jon's steering (fidelity NOT leashed, 11:39 ET).

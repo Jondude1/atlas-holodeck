@@ -12,11 +12,11 @@ uniform float fill_alpha = 0.28;
 uniform float rim_power = 2.2;      // higher = thinner rim
 uniform float rim_strength = 0.85;
 uniform float line_density = 360.0; // fine horizontal scanlines per metre (world Y)
-uniform float wire = 1.0;   // overall visibility (also used as the per-part fade)
-uniform float scan = 1.2;   // scan-plane height, 0..1 across y0..y1
-uniform float y0 = 0.0;     // world-space y range of the whole model
-uniform float y1 = 1.0;
-uniform float flash = 0.0;  // 1 = rim white-hot, 0 = settled to line colour
+instance uniform float wire = 1.0;   // overall visibility (also used as the per-part fade)
+instance uniform float scan = 1.2;   // scan-plane height, 0..1 across y0..y1
+instance uniform float y0 = 0.0;     // world-space y range of the whole model
+instance uniform float y1 = 1.0;
+instance uniform float flash = 0.0;  // 1 = rim white-hot, 0 = settled to line colour
 
 varying float wy;
 

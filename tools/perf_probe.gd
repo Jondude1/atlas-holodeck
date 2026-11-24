@@ -37,7 +37,7 @@ func _run() -> void:
 	await process_frame
 	var bracket: Node3D = main.get_node("HoloTable/TestBracket")
 	var bench: CadBench = main.get_node("CadBench")
-	while float(bracket.get("_mats")[0].get_shader_parameter("scan")) < 1.15:
+	while bracket.debug_scan() < 1.15:
 		await process_frame
 	await create_timer(1.5).timeout
 	await _case("demo bracket (3 parts) alone", bracket)

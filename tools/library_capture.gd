@@ -26,7 +26,7 @@ func _run() -> void:
 	cam = main.get_node("FallbackCamera")
 	var panel: Node = main.get_node("UIPanel")
 	var bracket: Node3D = main.get_node("HoloTable/TestBracket")
-	while not bracket.get("_mats").is_empty() and float(bracket.get("_mats")[0].get_shader_parameter("scan")) < 1.15:
+	while bracket.debug_scan() >= 0.0 and bracket.debug_scan() < 1.15:
 		await process_frame
 	var t_end := Time.get_ticks_msec() / 1000.0 + 120.0
 	while Hub.base_url == "" and Time.get_ticks_msec() / 1000.0 < t_end:

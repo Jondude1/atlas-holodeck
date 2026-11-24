@@ -30,7 +30,8 @@ var _parts: Array[MeshInstance3D] = []
 var _home := {}  # part -> home position
 var _centre := {} # part -> geometry (AABB) centre in model space, assembled
 var _dir := {}   # part -> unit explode direction (geometry centre - assembly centroid)
-var _mats: Array[ShaderMaterial] = []
+## R4-2: no per-part materials — every part shares Fx's one material per shader kind; per-part
+## values (aabb / wire / scan / y0 / y1 / flash) live in INSTANCE shader parameters on the part.
 var _bounds := AABB()  # model-local bounds of the assembled parts
 var _schematic: MeshInstance3D  # child of the root, NOT a part: never explodes
 var _schematic_mat: StandardMaterial3D
@@ -61,9 +62,7 @@ func _ready() -> void:
 		_dir[p] = d.normalized() if d.length() > 0.001 else Vector3.UP
 		var box: AABB = Transform3D(p.basis, p.position) * p.mesh.get_aabb()
 		_bounds = box if i == 0 else _bounds.merge(box)
-		var mat := _make_material(p)
-		_mats.append(mat)
-		p.material_override = mat
+		p.material_override = _make_material(p)
 	_build_schematic()
 	_build_dim_labels()
 	_build_scan_plane()
@@ -73,7 +72,17 @@ func _ready() -> void:
 ## Material hook: the hand-built bracket uses the AABB-edge shader; runtime CAD meshes override this with the
 ## fresnel mesh hologram (cad_model.gd).
 func _make_material(p: MeshInstance3D) -> ShaderMaterial:
-	return Fx.part_material(p.mesh.get_aabb())
+	var aabb := p.mesh.get_aabb()
+	p.set_instance_shader_parameter(&"aabb_center", aabb.get_center())
+	p.set_instance_shader_parameter(&"aabb_half", aabb.size * 0.5)
+	return Fx.part_material()
+
+## First part's scan value — capture/perf tools wait on materialize completion through this.
+func debug_scan() -> float:
+	if _parts.is_empty():
+		return -1.0
+	var v = _parts[0].get_instance_shader_parameter(&"scan")
+	return float(v) if v != null else 1.2
 
 ## A part's geometry centre in model space (AABB centre through its node transform).
 static func geom_centre(p: MeshInstance3D) -> Vector3:
@@ -90,28 +99,7 @@ func part_names() -> PackedStringArray:
 ## appears when every dimension is plain inches. Metric never reaches the display.
 func dims_text() -> String:
 	var s := _bounds.size / display_scale
-	var inches := [s.x / 0.0254, s.z / 0.0254, s.y / 0.0254]
-	var long_form := inches.any(func(v): return v >= 24.0)
-	var parts := PackedStringArray()
-	for v in inches:
-		parts.append(_fmt_len(v, long_form))
-	return " × ".join(parts) + ("" if long_form else " IN")
-
-static func _fmt_dec(v: float, places: int) -> String:
-	var t := String.num(v, places)
-	if t.contains("."):
-		t = t.rstrip("0").rstrip(".")
-	return t
-
-static func _fmt_len(inches: float, long_form: bool) -> String:
-	if inches >= 24.0:
-		var ft := int(inches / 12.0)
-		var rem := inches - ft * 12.0
-		if roundf(rem * 100.0) / 100.0 >= 12.0:  # rounding carried into a full foot
-			ft += 1
-			rem = 0.0
-		return "%d' %s\"" % [ft, _fmt_dec(rem, 1)]
-	return _fmt_dec(inches, 2)
+	return Units.dims_line([s.x / 0.0254, s.z / 0.0254, s.y / 0.0254])
 
 ## t in 0..1: 0 = assembled, 1 = fully exploded.
 func set_explode(t: float) -> void:
@@ -197,7 +185,7 @@ func scale_label() -> String:
 	var s := scale.x
 	if absf(s * display_scale - 1.0) < 0.01 and absf(display_scale - 1.0) > 0.01:
 		return "TRUE SIZE"
-	return "%s×" % _fmt_dec(s, 2)
+	return "%s×" % Units.dec(s, 2)
 
 # ---------------------------------------------------------------- hover / select (R1-11, R1-6)
 
@@ -230,7 +218,7 @@ func set_all_hot(on: bool) -> void:
 	_all_hot = on
 	for i in _parts.size():
 		var rest := 0.85 if _parts[i] == _hot_part else 0.0
-		_mats[i].set_shader_parameter("flash", 0.6 if on else rest)
+		_parts[i].set_instance_shader_parameter(&"flash", 0.6 if on else rest)
 
 func clear_highlight(only_hover := false) -> void:
 	if only_hover and _hot_pin:
@@ -241,7 +229,7 @@ func _style_part(p: MeshInstance3D, on: bool) -> void:
 	var i := _parts.find(p)
 	if i < 0:
 		return
-	_mats[i].set_shader_parameter("flash", 0.85 if on else 0.0)
+	_parts[i].set_instance_shader_parameter(&"flash", 0.85 if on else 0.0)
 	var t: Dictionary = _tethers[i]
 	var l: Label3D = t["label"]
 	if on:
@@ -347,7 +335,7 @@ func _build_dim_labels() -> void:
 	for i in 2:
 		var l := Label3D.new()
 		l.name = "DimLabel%d" % i
-		l.text = _fmt_len(inches[i], long_form) + ("" if long_form else " IN")
+		l.text = Units.len_in(inches[i], long_form) + ("" if long_form else " IN")
 		l.font = load(Tokens.FONT_BOLD)
 		l.font_size = 48
 		l.pixel_size = 0.0011
@@ -502,12 +490,7 @@ func _update_tethers() -> void:
 ## A part's true size in the house format (X × Z × Y inches, feet+inches past 24 in) from its AABB.
 func _part_dims_line(p: MeshInstance3D) -> String:
 	var sz := p.mesh.get_aabb().size / display_scale
-	var inches := [sz.x / 0.0254, sz.z / 0.0254, sz.y / 0.0254]
-	var long_form := inches.any(func(v): return v >= 24.0)
-	var parts := PackedStringArray()
-	for v in inches:
-		parts.append(_fmt_len(v, long_form))
-	return " × ".join(parts) + ("" if long_form else " IN")
+	return Units.dims_line([sz.x / 0.0254, sz.z / 0.0254, sz.y / 0.0254])
 
 func set_tether_alpha(a: float) -> void:
 	_tether_alpha = a
@@ -552,14 +535,14 @@ func _set_state(shown: bool, scan: float, flash_v: float, wire: float) -> void:
 		t["line"].visible = shown
 	if _tether_mat:
 		set_tether_alpha(0.0)
-	for m in _mats:
-		m.set_shader_parameter("scan", scan)
-		m.set_shader_parameter("flash", flash_v)
-		m.set_shader_parameter("wire", wire)
+	for p in _parts:
+		p.set_instance_shader_parameter(&"scan", scan)
+		p.set_instance_shader_parameter(&"flash", flash_v)
+		p.set_instance_shader_parameter(&"wire", wire)
 
 func _set_param(v: float, param: StringName) -> void:
-	for m in _mats:
-		m.set_shader_parameter(param, v)
+	for p in _parts:
+		p.set_instance_shader_parameter(param, v)
 
 ## The painted flat-schematic texture (null until the deferred paint lands) — the data station's
 ## pedestal disc shows the same drawing across the room (R3-11).
@@ -584,9 +567,9 @@ func materialize() -> void:
 	var y_hi := global_transform.origin.y + _bounds.end.y * scale.y
 	_set_state(true, -0.5, 1.0, 0.0)
 	_set_schematic_alpha(0.0)
-	for m in _mats:
-		m.set_shader_parameter("y0", y_lo)
-		m.set_shader_parameter("y1", y_hi)
+	for p in _parts:
+		p.set_instance_shader_parameter(&"y0", y_lo)
+		p.set_instance_shader_parameter(&"y1", y_hi)
 	var tw := create_tween().set_parallel(true)
 	if _schematic_ready:
 		Ease.fd(tw.tween_method(_set_schematic_alpha, 0.0, 1.0, 0.5))

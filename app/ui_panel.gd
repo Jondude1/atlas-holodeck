@@ -148,6 +148,12 @@ func _build_ui() -> void:
 	fix_floor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fix_floor.pressed.connect(XrBoot.reset_floor.bind("panel"))
 	bottom.add_child(fix_floor)
+	_vista_button = _action_button("VIEW: COAST", Vector2(0, 60), 24)   # Round 5: cycle the world outside the open wall
+	_vista_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_vista_button.pressed.connect(func() -> void:
+		if _vista:
+			_vista.cycle())
+	bottom.add_child(_vista_button)
 	box.add_child(bottom)
 
 	var send := _action_button("SEND TO PRINTER", Vector2(0, 60), 30)   # opens the confirmation card; never prints by itself
@@ -471,6 +477,16 @@ func _build_print_card() -> void:
 	row.add_child(_card_cancel)
 	_card.visible = false
 	_vp.add_child(_card)
+
+var _vista: VistaDeck
+var _vista_button: Button
+
+func bind_vista(v: VistaDeck) -> void:
+	_vista = v
+	_vista_button.text = "VIEW: %s" % v.current().to_upper()
+	v.vista_changed.connect(func(nm: String) -> void:
+		_vista_button.text = "VIEW: %s" % nm.to_upper()
+		poke())
 
 func bind_print(pf: PrintFlow) -> void:
 	_print = pf

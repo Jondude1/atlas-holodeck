@@ -13,6 +13,11 @@ const HALF_X := 4.0
 const Z_BACK := -5.0
 const Z_FRONT := 3.0
 const HEIGHT := 3.4
+# Round 5 — the open wall (left, -X): a hangar opening onto the terrace and the vista.
+const OPEN_Z0 := -4.2                  # opening span along the left wall
+const OPEN_Z1 := 1.8
+const OPEN_TOP := 2.9                  # opening head height (header above)
+const TERRACE_X := -7.3                # terrace floor outer edge
 const PPM := 128               # wall texture pixels per metre
 const STRIP_ENERGY := 1.3
 const COVE_ENERGY := 1.4
@@ -181,20 +186,77 @@ func _build_walls() -> void:
 	var back_px: Array[int] = []
 	for wx in [-1.0, 1.0]:                # the shelving units own the outer bays now
 		back_px.append(int((wx + HALF_X) * PPM))
-	var left_z := -3.2
 	var right_z := -3.2
-	var left_px: Array[int] = [int((Z_FRONT - left_z) * PPM)]   # left wall: texture u runs +Z -> -Z
 	var right_px: Array[int] = [int((right_z - Z_BACK) * PPM)]  # right wall: texture u runs -Z -> +Z
 	_mesh("WallBack", _quad(size), _unshaded_tex(_wall_texture(false, 11, back_px)), Vector3(0, y, Z_BACK))
 	_mesh("WallFront", _quad(size), _unshaded_tex(_wall_texture(false, 23, [])), Vector3(0, y, Z_FRONT), Vector3(0, 180, 0))
 	var side := Vector2(Z_FRONT - Z_BACK, HEIGHT)
-	_mesh("WallLeft", _quad(side), _unshaded_tex(_wall_texture(true, 37, left_px)), Vector3(-HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, 90, 0))
 	_mesh("WallRight", _quad(side), _unshaded_tex(_wall_texture(true, 41, right_px)), Vector3(HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, -90, 0))
+	_build_open_wall()
 
 	for wx in [-1.0, 1.0]:                # accent strips: merged into the lab's emissive mesh (STRIP_ENERGY of E_BASE)
 		_lab_strip(Vector3(wx, 1.5, Z_BACK + 0.016), Vector3(0.03, 1.2, 0.03))
-	_lab_strip(Vector3(-HALF_X + 0.016, 1.5, left_z), Vector3(0.03, 1.2, 0.03))
 	_lab_strip(Vector3(HALF_X - 0.016, 1.5, right_z), Vector3(0.03, 1.2, 0.03))
+
+## Round 5: the left wall is no longer a wall — two pillars + a header leave a hangar
+## opening (OPEN_Z0..OPEN_Z1, floor to OPEN_TOP) framed in titanium with a cyan light
+## line, opening onto a railed terrace. The segments share the one wall texture/material
+## so the panelling reads continuous; frame, railing and trim merge into the lab's
+## builders (no extra draw calls beyond the segments + the terrace floor).
+func _build_open_wall() -> void:
+	var mat := _unshaded_tex(_wall_texture(true, 37, []))
+	_mesh("WallLeftBack", _wall_segment(Z_BACK, OPEN_Z0, 0.0, HEIGHT), mat, Vector3.ZERO)
+	_mesh("WallLeftFront", _wall_segment(OPEN_Z1, Z_FRONT, 0.0, HEIGHT), mat, Vector3.ZERO)
+	_mesh("WallLeftHeader", _wall_segment(OPEN_Z0, OPEN_Z1, OPEN_TOP, HEIGHT), mat, Vector3.ZERO)
+	var ti := Color(0.32, 0.38, 0.46)
+	var k := STRIP_ENERGY / Lab.E_BASE
+	var line := Color(Tokens.HOLO_LINE.r * k, Tokens.HOLO_LINE.g * k, Tokens.HOLO_LINE.b * k)
+	# machined frame: jambs + head beam + a threshold plate at the floor line
+	_lab.lit.add_box(Vector3(-HALF_X, OPEN_TOP * 0.5, OPEN_Z0), Vector3(0.2, OPEN_TOP, 0.2), ti)
+	_lab.lit.add_box(Vector3(-HALF_X, OPEN_TOP * 0.5, OPEN_Z1), Vector3(0.2, OPEN_TOP, 0.2), ti)
+	_lab.lit.add_box(Vector3(-HALF_X, (OPEN_TOP + HEIGHT) * 0.5, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.2, HEIGHT - OPEN_TOP, OPEN_Z1 - OPEN_Z0 + 0.2), ti)
+	_lab.lit.add_box(Vector3(-HALF_X, 0.012, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.34, 0.024, OPEN_Z1 - OPEN_Z0), ti * 0.8)
+	# the cyan light line tracing the opening's inner edge
+	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z0 + 0.11), Vector3(0.025, OPEN_TOP, 0.025), line)
+	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z1 - 0.11), Vector3(0.025, OPEN_TOP, 0.025), line)
+	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP - 0.02, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.025, 0.025, OPEN_Z1 - OPEN_Z0 - 0.2), line)
+	# terrace floor: the room's plate, extended past the wall line to the railing
+	var tmat := _lit(Color(0.45, 0.52, 0.62), 0.55, 0.45, _floor_texture())
+	tmat.uv1_scale = Vector3(-TERRACE_X - HALF_X, Z_FRONT - Z_BACK, 1.0)
+	var terrace := PlaneMesh.new()
+	terrace.size = Vector2(-TERRACE_X - HALF_X, Z_FRONT - Z_BACK)
+	_mesh("Terrace", terrace, tmat, Vector3((TERRACE_X - HALF_X) * 0.5, -0.005, (Z_FRONT + Z_BACK) * 0.5))
+	# railing: posts + two rails on the outer edge, top rails closing both ends, a lit lip
+	var rail_x := TERRACE_X + 0.15
+	for i in 7:
+		_lab.lit.add_box(Vector3(rail_x, 0.48, -4.9 + i * 1.3), Vector3(0.05, 0.96, 0.05), ti)
+	_lab.lit.add_box(Vector3(rail_x, 0.97, -1.0), Vector3(0.06, 0.05, 8.0), ti)
+	_lab.lit.add_box(Vector3(rail_x, 0.55, -1.0), Vector3(0.04, 0.03, 8.0), ti)
+	for e in [-4.97, 2.97]:
+		_lab.lit.add_box(Vector3((rail_x - HALF_X) * 0.5, 0.97, e), Vector3(-rail_x - HALF_X, 0.05, 0.06), ti)
+		_lab.lit.add_box(Vector3(rail_x, 0.48, e), Vector3(0.05, 0.96, 0.05), ti)
+	_lab.emi.add_box(Vector3(TERRACE_X + 0.02, 0.02, -1.0), Vector3(0.03, 0.015, 8.0), line * 0.7)
+
+## One piece of the left wall in world space at x = -HALF_X, facing +X, with UVs that
+## continue the full-wall texture (u runs +Z -> -Z, v = 1 at the floor).
+func _wall_segment(za: float, zb: float, y0: float, y1: float) -> ArrayMesh:
+	var ua := (Z_FRONT - za) / (Z_FRONT - Z_BACK)
+	var ub := (Z_FRONT - zb) / (Z_FRONT - Z_BACK)
+	var va := 1.0 - y0 / HEIGHT
+	var vb := 1.0 - y1 / HEIGHT
+	var a := Vector3(-HALF_X, y1, zb)
+	var b := Vector3(-HALF_X, y1, za)
+	var c := Vector3(-HALF_X, y0, za)
+	var d := Vector3(-HALF_X, y0, zb)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([a, c, b, a, d, c])
+	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([
+		Vector2(ub, vb), Vector2(ua, va), Vector2(ua, vb),
+		Vector2(ub, vb), Vector2(ub, va), Vector2(ua, va)])
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 func _lab_strip(c: Vector3, size: Vector3, energy := STRIP_ENERGY) -> void:
 	var k := energy / Lab.E_BASE

@@ -20,15 +20,7 @@ func bind_station(st: DataStation) -> void:
 	_refresh_station()
 
 static func dims_line(d: Array) -> String:
-	if d.size() < 3:
-		return ""
-	return "%s × %s × %s IN" % [_fmt(float(d[0])), _fmt(float(d[1])), _fmt(float(d[2]))]
-
-static func _fmt(v: float) -> String:
-	var t := String.num(v, 2)
-	if t.contains("."):
-		t = t.rstrip("0").rstrip(".")
-	return t
+	return Units.dims_line(d)
 
 func _refresh_station() -> void:
 	if _station == null:

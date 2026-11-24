@@ -335,6 +335,10 @@ func _process(delta: float) -> void:
 	_ring_pivot.rotate_y(deg_to_rad(RING_DEG_PER_SEC) * delta)
 	_update_glow(delta)
 
+## The 3-light rig, for the vista system's per-vista mood tints (Round 5).
+func mood_lights() -> Array:
+	return [_light, _fill, _rim]
+
 func set_link(text: String) -> void:
 	_labels["link"].text = text
 

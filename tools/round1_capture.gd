@@ -43,7 +43,7 @@ func _run() -> void:
 	var bracket: Node3D = main.get_node("HoloTable/TestBracket")
 	var table: Node3D = main.get_node("HoloTable")
 	var panel: Node3D = main.get_node("UIPanel")
-	while not bracket.get("_mats").is_empty() and float(bracket.get("_mats")[0].get_shader_parameter("scan")) < 1.15:
+	while bracket.debug_scan() >= 0.0 and bracket.debug_scan() < 1.15:
 		await process_frame        # boot + demo bracket materialize
 	await _secs(1.0)
 	var man: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_abs("cad/trebuchet.manifest.json")))

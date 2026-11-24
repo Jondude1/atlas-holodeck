@@ -81,4 +81,4 @@ func spoken_dims() -> String:
 	var td: Array = manifest.get("true_dims_in", [])
 	if td.size() < 3:
 		return ""
-	return "%s by %s by %s inches" % [_fmt_dec(float(td[0]), 2), _fmt_dec(float(td[1]), 2), _fmt_dec(float(td[2]), 2)]
+	return "%s by %s by %s inches" % [Units.dec(float(td[0]), 2), Units.dec(float(td[1]), 2), Units.dec(float(td[2]), 2)]

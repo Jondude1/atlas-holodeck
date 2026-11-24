@@ -75,7 +75,7 @@ func _run() -> void:
 	cam = main.get_node("FallbackCamera")
 	bench = main.get_node("CadBench")
 	var bracket: Node3D = bench.active_model()
-	while not bracket.get("_mats").is_empty() and float(bracket.get("_mats")[0].get_shader_parameter("scan")) < 1.15:
+	while bracket.debug_scan() >= 0.0 and bracket.debug_scan() < 1.15:
 		await process_frame
 	await _secs(1.0)
 	await _one("bracket", "cad-jobs/edit-bracket-tall", "model.glb", "manifest.json", 0.0)

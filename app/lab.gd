@@ -54,8 +54,8 @@ func _e_box(c: Vector3, size: Vector3, k := 0.6, basis := Basis.IDENTITY) -> voi
 func build(table_xz: Vector2) -> void:
 	_table_xz = table_xz
 	_rng.seed = 1621
-	for side in [-1.0, 1.0]:
-		_workbench(side)
+	_workbench(1.0)          # Round 5: the left bench run is gone — the open wall lives there
+	_suit_platforms()
 	for side in [-1.0, 1.0]:
 		_shelf_unit(Vector3(side * 3.35, 0.0, -4.78), 0.0)
 	_greebles()
@@ -83,6 +83,16 @@ func build(table_xz: Vector2) -> void:
 	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.15), Fx.radial_texture(128, 1.9))
 	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 1.05)
 	add_child(gloss)
+
+## Round 5: two ring-lit display platforms flanking the open wall — the suit bay.
+## (The suits themselves arrive via the image-to-3D pipeline; the pads are architecture.)
+func _suit_platforms() -> void:
+	for z in [-3.35, 0.85]:
+		lit.add_cyl(Vector3(-3.15, 0.035, z), 0.58, 0.07, _ti(0.5), 28)
+		lit.add_cyl(Vector3(-3.15, 0.075, z), 0.5, 0.012, _deep(0.3), 28)
+		var ring := Color(Tokens.HOLO_LINE.r * 0.55, Tokens.HOLO_LINE.g * 0.55, Tokens.HOLO_LINE.b * 0.55)
+		emi.add_torus(Vector3(-3.15, 0.078, z), 0.53, 0.012, ring, 48, 6)
+		emi.add_cyl(Vector3(-3.15, 0.004, z), 0.64, 0.008, ring * 0.22, 28)
 
 func _seal() -> void:
 	_lit_mat = StandardMaterial3D.new()

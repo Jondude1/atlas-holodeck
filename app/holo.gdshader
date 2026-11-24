@@ -8,14 +8,14 @@ uniform vec3 fill_color : source_color = vec3(0.1, 0.3, 0.6);
 uniform vec3 line_color : source_color = vec3(0.5, 0.8, 1.0);
 uniform vec3 core_color : source_color = vec3(0.9, 0.95, 1.0);
 uniform float fill_alpha = 0.28;
-uniform vec3 aabb_center = vec3(0.0);
-uniform vec3 aabb_half = vec3(0.1);
+instance uniform vec3 aabb_center = vec3(0.0);
+instance uniform vec3 aabb_half = vec3(0.1);
 uniform float edge_w = 0.004;
-uniform float wire = 1.0;   // overall visibility (beat 1: wireframe appears)
-uniform float scan = 1.2;   // scan-plane height, 0..1 across y0..y1
-uniform float y0 = 0.0;     // world-space y range of the whole model
-uniform float y1 = 1.0;
-uniform float flash = 0.0;  // 1 = edges white-hot, 0 = settled to line colour
+instance uniform float wire = 1.0;   // overall visibility (beat 1: wireframe appears)
+instance uniform float scan = 1.2;   // scan-plane height, 0..1 across y0..y1
+instance uniform float y0 = 0.0;     // world-space y range of the whole model
+instance uniform float y1 = 1.0;
+instance uniform float flash = 0.0;  // 1 = edges white-hot, 0 = settled to line colour
 uniform float line_density = 360.0; // R3-8: fine horizontal scanlines per metre (world Y), matches holo_mesh
 
 varying vec3 vpos;

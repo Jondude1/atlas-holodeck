@@ -50,10 +50,7 @@ func _ring_progress() -> float:
 
 func _scan() -> float:
 	var model = _main.get_node("HoloTable/TestBracket")
-	var mats: Array = model.get("_mats")
-	if mats.is_empty():
-		return -1.0
-	return float(mats[0].get_shader_parameter("scan"))
+	return model.debug_scan()
 
 func _draws() -> int:
 	await RenderingServer.frame_post_draw

@@ -39,26 +39,38 @@ static func pulse_material(c: Color, energy: float, axis := Vector3.RIGHT, span 
 	m.set_shader_parameter("phase", phase)
 	return m
 
-static func part_material(aabb: AABB) -> ShaderMaterial:
+## R4-2: ONE shared material for every hologram part of each shader kind. Everything that varies
+## per part (aabb, wire, scan, y0, y1, flash) is an INSTANCE uniform in the shaders, set per
+## MeshInstance3D — so a 27-part model costs 1 material instead of 27, and parts batch together.
+## Contract: NEVER set a regular uniform on these at runtime; per-part values go through
+## set_instance_shader_parameter on the part itself.
+static var _part_mat: ShaderMaterial
+static var _mesh_part_mat: ShaderMaterial
+
+static func part_material() -> ShaderMaterial:
+	if _part_mat:
+		return _part_mat
 	var m := ShaderMaterial.new()
 	m.shader = load("res://holo.gdshader")
 	m.set_shader_parameter("fill_color", Tokens.HOLO_PRIMARY)
 	m.set_shader_parameter("line_color", Tokens.HOLO_LINE)
 	m.set_shader_parameter("core_color", Tokens.HOLO_CORE)
 	m.set_shader_parameter("fill_alpha", Tokens.VOLUME_ALPHA)
-	m.set_shader_parameter("aabb_center", aabb.get_center())
-	m.set_shader_parameter("aabb_half", aabb.size * 0.5)
+	_part_mat = m
 	return m
 
-## Real-mesh hologram (fresnel rim + volume fill, promoted from the parked trebuchet work): same uniforms as
-## part_material, so a runtime CAD model materializes with the identical scan/flash/wire language.
+## Real-mesh hologram (fresnel rim + volume fill, promoted from the parked trebuchet work): same
+## instance uniforms as part_material, so a runtime CAD model materializes identically.
 static func mesh_part_material() -> ShaderMaterial:
+	if _mesh_part_mat:
+		return _mesh_part_mat
 	var m := ShaderMaterial.new()
 	m.shader = load("res://holo_mesh.gdshader")
 	m.set_shader_parameter("fill_color", Tokens.HOLO_PRIMARY)
 	m.set_shader_parameter("line_color", Tokens.HOLO_LINE)
 	m.set_shader_parameter("core_color", Tokens.HOLO_CORE)
 	m.set_shader_parameter("fill_alpha", Tokens.VOLUME_ALPHA)
+	_mesh_part_mat = m
 	return m
 
 static func additive_unshaded(c: Color) -> StandardMaterial3D:
@@ -148,7 +160,14 @@ static func titanium(c: Color) -> StandardMaterial3D:
 	return m
 
 ## Soft radial sprite (white centre -> transparent edge): glow pools, halos.
+## R4-1: cached by (size, power) — call sites repeat the same pairs, and each generation is a
+## per-pixel GDScript loop plus a texture upload. Textures are immutable, so sharing is safe.
+static var _radial_cache: Dictionary = {}
+
 static func radial_texture(size: int, power := 1.0) -> ImageTexture:
+	var key := "%d|%s" % [size, str(power)]
+	if _radial_cache.has(key):
+		return _radial_cache[key]
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var h := size * 0.5
 	for y in size:
@@ -156,7 +175,9 @@ static func radial_texture(size: int, power := 1.0) -> ImageTexture:
 			var d := Vector2(x + 0.5 - h, y + 0.5 - h).length() / h
 			var a := pow(clampf(1.0 - d, 0.0, 1.0), power)
 			img.set_pixel(x, y, Color(1, 1, 1, a))
-	return ImageTexture.create_from_image(img)
+	var tex := ImageTexture.create_from_image(img)
+	_radial_cache[key] = tex
+	return tex
 
 ## Additive soft-glow material from a radial_texture; alpha scales it.
 static func glow_decal(c: Color, tex: Texture2D) -> StandardMaterial3D:

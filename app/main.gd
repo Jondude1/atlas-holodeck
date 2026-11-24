@@ -15,6 +15,7 @@ const RING_DISTANCE := 1.3
 
 var _voice: VoiceLink
 var _bench: CadBench
+var _vista: VistaDeck
 
 var _xr_ok := false
 var _ring_mat: ShaderMaterial
@@ -52,6 +53,13 @@ func _ready() -> void:
 	add_child(_bench)
 	_bench.setup(_table, _model, _panel, _hud, _voice)
 	_bench.bind_station(_room.station())
+	# Round 5: the world outside the open wall — resident vistas, mood bound to the
+	# Environment + the table's light rig; the panel's VIEW button cycles them.
+	_vista = VistaDeck.new()
+	_vista.name = "VistaDeck"
+	add_child(_vista)
+	_vista.bind($WorldEnvironment.environment, _table.mood_lights())
+	_panel.bind_vista(_vista)
 	var print_flow := PrintFlow.new()          # confirmation-gated send-to-print (dry run only in this build)
 	print_flow.name = "PrintFlow"
 	add_child(print_flow)
