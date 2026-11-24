@@ -49,6 +49,9 @@ func _ready() -> void:
 	add_to_group("grabbable")
 	set_process(false)
 
+func is_held() -> bool:
+	return not _hands.is_empty()
+
 func can_grab(hand: Node3D) -> bool:
 	return hand.global_position.distance_to(global_transform * center_local) <= grab_radius * maxf(scale.x, 1.0)
 

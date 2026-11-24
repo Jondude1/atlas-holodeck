@@ -25,17 +25,17 @@ const ORDER: Array[String] = ["coast", "lake", "valley"]
 
 const DEFS := {
 	"coast": {
-		"tex": "res://vistas/vista-coast.png", "card_top": 12.9,
+		"tex": "res://vistas/vista-coast.png", "card_top": 15.5,
 		"sky_top": Color(0.16, 0.42, 0.78), "sky_horizon": Color(0.62, 0.82, 0.95), "sky_ground": Color(0.05, 0.18, 0.28),
-		"fog": Color(0.55, 0.72, 0.85), "ambient_energy": 0.27, "fog_density": 0.012,
+		"fog": Color(0.55, 0.72, 0.85), "ambient_energy": 0.20, "fog_density": 0.012,
 		"omni_tint": Color(1.05, 1.0, 0.9), "omni_energy": 1.0,
 		"water_y": -1.6, "water_deep": Color(0.02, 0.23, 0.38), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(0.85, 0.93, 1.0), "mist_alpha": 0.35, "cloud_tint": Color(1, 1, 1),
 	},
 	"lake": {
-		"tex": "res://vistas/vista-lake.png", "card_top": 12.2,
+		"tex": "res://vistas/vista-lake.png", "card_top": 14.5,
 		"sky_top": Color(0.03, 0.08, 0.22), "sky_horizon": Color(0.35, 0.5, 0.72), "sky_ground": Color(0.02, 0.05, 0.12),
-		"fog": Color(0.3, 0.42, 0.6), "ambient_energy": 0.3, "fog_density": 0.02,
+		"fog": Color(0.3, 0.42, 0.6), "ambient_energy": 0.23, "fog_density": 0.02,
 		"omni_tint": Color(0.75, 0.85, 1.1), "omni_energy": 0.8,
 		"water_y": -0.9, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,
 		"mist": Color(0.75, 0.85, 1.0), "mist_alpha": 0.6, "cloud_tint": Color(0.6, 0.7, 0.9),
@@ -43,7 +43,7 @@ const DEFS := {
 	"valley": {
 		"tex": "res://vistas/vista-valley.png", "card_top": 15.2,
 		"sky_top": Color(0.35, 0.55, 0.8), "sky_horizon": Color(0.95, 0.85, 0.65), "sky_ground": Color(0.08, 0.16, 0.1),
-		"fog": Color(0.7, 0.72, 0.6), "ambient_energy": 0.36, "fog_density": 0.015,
+		"fog": Color(0.7, 0.72, 0.6), "ambient_energy": 0.27, "fog_density": 0.015,
 		"omni_tint": Color(1.1, 1.0, 0.85), "omni_energy": 0.95,
 		"water_y": 999.0, "water_deep": Color(0.02, 0.2, 0.3), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(1.0, 0.97, 0.9), "mist_alpha": 0.45, "cloud_tint": Color(1, 0.98, 0.95),

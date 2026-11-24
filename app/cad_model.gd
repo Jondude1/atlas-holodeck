@@ -9,6 +9,7 @@ const DISPLAY_FIT_M := 0.5          # longest horizontal true dimension is shown
 const SCALE_MIN := 0.25
 const SCALE_MAX := 14.0
 
+var world_solid := false   # R5B: true while this model lives in the world as a solid object
 var manifest := {}
 var model_name := "MODEL"
 var load_ok := false

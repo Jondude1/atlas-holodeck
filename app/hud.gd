@@ -5,14 +5,14 @@ extends Node3D
 ## Real data only: clock from the system, LINK/BRAIN from Hub, PARTS/DIMS/EXPLODE from the model.
 ## Cost: ~13 draw calls (strip, 2 arcs, gauge, card + their labels).
 
-const STRIP_POS := Vector3(0.0, 1.88, -2.4)
+const STRIP_POS := Vector3(0.0, 2.32, -2.4)   # R6: raised out of the sightline to the opening
 const STRIP_SIZE := Vector2(1.3, 0.12)
-const ARC_X := 1.55
-const ARC_Y := 1.5
-const ARC_Z := -2.3
-const ARC_SIZE := 1.9
+const ARC_X := 3.3   # R6 pic-pass: far corners flanking the opening, clear of the orb
+const ARC_Y := 1.9
+const ARC_Z := -3.9
+const ARC_SIZE := 0.9
 const ARC_DEG_PER_SEC := 2.5
-const ARC_ALPHA := 0.55
+const ARC_ALPHA := 0.3
 const GAUGE_SIZE := 0.5
 const GAUGE_ALPHA := 0.95
 const CARD_SIZE := Vector2(0.4, 0.34)

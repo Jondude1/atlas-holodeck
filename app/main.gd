@@ -52,12 +52,18 @@ func _ready() -> void:
 	_bench.name = "CadBench"
 	add_child(_bench)
 	_bench.setup(_table, _model, _panel, _hud, _voice)
-	_bench.bind_station(_room.station())
+	_bench.bind_presence(_room.presence())
+	# R6-2: the wall widgets (movable readouts/pictures on the side walls)
+	var widgets := WallWidgets.new()
+	widgets.name = "WallWidgets"
+	add_child(widgets)
+	widgets.build(_bench)
 	# Round 5: the world outside the open wall — resident vistas, mood bound to the
 	# Environment + the table's light rig; the panel's VIEW button cycles them.
 	_vista = VistaDeck.new()
 	_vista.name = "VistaDeck"
 	add_child(_vista)
+	_vista.rotation.y = -PI / 2.0   # R6: the deck was built facing the old left opening; the opening is on the back wall now
 	_vista.bind($WorldEnvironment.environment, _table.mood_lights())
 	_panel.bind_vista(_vista)
 	# Round 5B: the locomotion rig owns the XR origin (stick move + snap turn, clamped

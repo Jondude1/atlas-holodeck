@@ -9,22 +9,43 @@ extends Node
 ## Voice alone never prints: send-to-print is the confirmation-gated, dry-run-only PrintFlow.
 
 signal spawned(model: Node3D)
-var _station: DataStation
+var _presence: Presence
+var _overview_lines: Array = []   # R6: composed for the wall widgets (was the station wall)
 var _lib_count := -1
 var _lib_recent: Array = []
 var _last_job_stamp := ""
 
 ## R3-11: the back-wall data station mirrors REAL bench state (library, table, last job).
-func bind_station(st: DataStation) -> void:
-	_station = st
+func bind_presence(p: Presence) -> void:
+	_presence = p
 	_refresh_station()
+
+## The current overview lines (title first) — the wall widgets render these (R6-2).
+func overview_lines() -> Array:
+	return _overview_lines
+
+## Wall-widget feeds (R6-2): the active model and the library, as display lines.
+func model_lines() -> Array:
+	if _active:
+		var nm: Variant = _active.get("model_name")
+		var lines: Array = ["ON THE TABLE", String(nm) if nm != null else "DEMO BRACKET", "SIZE — %s" % _active.dims_text()]
+		var pc: int = _active.part_names().size()
+		if pc > 0:
+			lines.append("PARTS — %d" % pc)
+		return lines
+	return ["ON THE TABLE", "— NOTHING YET —", "ASK ATLAS FOR A PART, OR LOAD ONE FROM THE LIBRARY"]
+
+func library_lines() -> Array:
+	var lines: Array = ["PARTS LIBRARY"]
+	lines.append("%s" % ("%d PARTS" % _lib_count if _lib_count >= 0 else "—"))
+	for e in _lib_recent:
+		lines.append("· %s" % String(e))
+	return lines
 
 static func dims_line(d: Array) -> String:
 	return Units.dims_line(d)
 
 func _refresh_station() -> void:
-	if _station == null:
-		return
 	var lines: Array = ["WORKSHOP OVERVIEW"]
 	lines.append("LIBRARY — %s" % ("%d PARTS" % _lib_count if _lib_count >= 0 else "—"))
 	for e in _lib_recent:
@@ -35,12 +56,12 @@ func _refresh_station() -> void:
 		lines.append("ON TABLE — —")
 	if _last_job_stamp != "":
 		lines.append("LAST JOB — %s" % _last_job_stamp)
-	_station.set_overview(lines)
+	_overview_lines = lines
 
 func _push_schematic_later(m: Node3D) -> void:
+	# R6: the station's schematic disc is gone (the table inset carries the schematic);
+	# kept as a no-op so the retarget call sites stay simple.
 	await get_tree().create_timer(1.4).timeout
-	if _station and is_instance_valid(m) and m == _active:
-		_station.set_schematic(m.schematic_texture())
 signal selected(model: Node3D)
 
 const CadModelScript := preload("res://cad_model.gd")
@@ -74,6 +95,7 @@ func setup(table: Node3D, first_model: Node3D, panel: Node3D, hud: Node, voice: 
 	_active = first_model
 	_bench.append(first_model)
 	_watch(first_model)
+	restore_world()
 	voice.cad_job.connect(_on_job)
 	voice.cad_done.connect(_on_done)
 	voice.cad_failed.connect(_on_failed)
@@ -124,8 +146,8 @@ func _on_done(job_id: String) -> void:
 	var td := Time.get_time_dict_from_system()
 	_last_job_stamp = "%02d:%02d" % [int(td["hour"]), int(td["minute"])]
 	_refresh_station()
-	if _station:
-		_station.celebrate()
+	if _presence:
+		_presence.celebrate()
 
 ## Polls the job so completion is caught even if the socket dropped (or the hub is reached by LAN only for REST).
 func _poll(job_id: String) -> void:
@@ -204,6 +226,8 @@ func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job 
 		status = ""
 		_voice.say("The part came back, but I couldn't read it. Let's try that again.")
 		return null
+	if job_id != "":
+		_cache_job(job_id, glb, manifest)
 	m.call("hide_all")
 	if old:
 		return await _replace_in_place(old, m, manifest)
@@ -377,3 +401,140 @@ func _get_bytes(path: String) -> PackedByteArray:
 	if res[0] != HTTPRequest.RESULT_SUCCESS or res[1] != 200:
 		return PackedByteArray()
 	return res[3]
+
+# ---------------------------------------------------------------- Round 5B: solidify + persistence
+## Carry the active model beyond the table's edge and it SOLIDIFIES: same geometry, a
+## machined-titanium material, living in the world as a grabbable object that settles onto
+## whatever support is under it and PERSISTS (user://world.json + the job's GLB cached at
+## spawn, so restore works with the hub offline). Carry it back over a free table and it
+## returns to hologram + bench duty. One world solid at a time (v1 scope).
+
+const WORLD_PATH := "user://world.json"
+const CACHE_DIR := "user://world_cache"
+var _solid: Node3D = null
+static var _solid_mat: StandardMaterial3D = null
+
+static func solid_material() -> StandardMaterial3D:
+	if _solid_mat == null:
+		_solid_mat = StandardMaterial3D.new()
+		_solid_mat.albedo_color = Color(0.6, 0.63, 0.67)
+		_solid_mat.metallic = 0.85
+		_solid_mat.roughness = 0.38
+	return _solid_mat
+
+func _process(dt: float) -> void:
+	if _solid == null and _active != null and is_instance_valid(_active) \
+			and _active.get_script() == CadModelScript and bool(_active.call("is_held")):
+		if _beyond_table(_active, 0.18):
+			_solidify(_active)
+	if _solid != null and is_instance_valid(_solid):
+		if bool(_solid.call("is_held")):
+			if _active == null and _within_table(_solid, -0.04) and _solid.global_position.y < 1.85:
+				_unsolidify(_solid)
+		else:
+			var sup := Prop.support_height(_solid.global_position)
+			if _solid.global_position.y > sup + 0.004:
+				_solid.global_position.y = lerpf(_solid.global_position.y, sup, clampf(dt * 7.0, 0.0, 1.0))
+				if _solid.global_position.y <= sup + 0.02:
+					_solid.global_position.y = sup
+					_save_world()
+
+func _table_rect(ext: float) -> Rect2:
+	var c := _table.global_position
+	return Rect2(c.x - 1.35 - ext, c.z - 0.72 - ext, 2.7 + ext * 2.0, 1.44 + ext * 2.0)
+
+func _centre_xz(m: Node3D) -> Vector2:
+	var c: Vector3 = m.global_transform * (m.get("center_local") as Vector3)
+	return Vector2(c.x, c.z)
+
+func _beyond_table(m: Node3D, ext: float) -> bool:
+	return not _table_rect(ext).has_point(_centre_xz(m))
+
+func _within_table(m: Node3D, ext: float) -> bool:
+	return _table_rect(ext).has_point(_centre_xz(m))
+
+func _solidify(m: Node3D) -> void:
+	m.call("set_explode", 0.0)
+	_bench.erase(m)
+	if _active == m:
+		_active = null
+	m.reparent(get_parent(), true)
+	for p in (m.get("_parts") as Array):
+		(p as MeshInstance3D).material_override = solid_material()
+	m.set("world_solid", true)
+	_solid = m
+	Sfx.play(self, "materialize")
+	_log("solidified '%s' — it lives in the world now" % String(m.get("model_name")))
+	_save_world()
+	_refresh_station()
+
+func _unsolidify(m: Node3D) -> void:
+	m.reparent(_table, true)
+	for p in (m.get("_parts") as Array):
+		(p as MeshInstance3D).material_override = m.call("_make_material", p)
+	m.set("world_solid", false)
+	_solid = null
+	_bench.append(m)
+	if not m.is_connected("flicked_aside", _on_flicked):
+		_watch(m)
+	_active = m
+	_retarget(m)
+	Sfx.play(self, "materialize")
+	_log("'%s' is back on the table as a hologram" % String(m.get("model_name")))
+	_save_world()
+	_refresh_station()
+
+func _cache_job(job_id: String, glb: PackedByteArray, manifest: Dictionary) -> void:
+	DirAccess.make_dir_recursive_absolute(CACHE_DIR)
+	var f := FileAccess.open(CACHE_DIR + "/" + job_id + ".glb", FileAccess.WRITE)
+	if f:
+		f.store_buffer(glb)
+	var g := FileAccess.open(CACHE_DIR + "/" + job_id + ".json", FileAccess.WRITE)
+	if g:
+		g.store_string(JSON.stringify(manifest))
+
+func _save_world() -> void:
+	var objs: Array = []
+	if _solid != null and is_instance_valid(_solid):
+		var p := _solid.global_position
+		var r := _solid.global_rotation
+		objs.append({"job_id": String(_solid.get("job_id")), "name": String(_solid.get("model_name")),
+			"pos": [p.x, p.y, p.z], "rot": [r.x, r.y, r.z], "scale": _solid.scale.x})
+	var f := FileAccess.open(WORLD_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"version": 1, "objects": objs}))
+
+func restore_world() -> void:
+	if not FileAccess.file_exists(WORLD_PATH):
+		return
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(WORLD_PATH))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	for entry in (parsed as Dictionary).get("objects", []):
+		var jid := String((entry as Dictionary).get("job_id", ""))
+		var glb_path := CACHE_DIR + "/" + jid + ".glb"
+		var man_path := CACHE_DIR + "/" + jid + ".json"
+		if jid == "" or not FileAccess.file_exists(glb_path) or not FileAccess.file_exists(man_path):
+			continue
+		var man: Variant = JSON.parse_string(FileAccess.get_file_as_string(man_path))
+		if typeof(man) != TYPE_DICTIONARY:
+			continue
+		var m: Node3D = Node3D.new()
+		m.set_script(CadModelScript)
+		m.name = "WorldModel"
+		m.call("setup", FileAccess.get_file_as_bytes(glb_path), man)
+		m.set("job_id", jid)
+		get_parent().add_child(m)
+		if not bool(m.get("load_ok")):
+			m.queue_free()
+			continue
+		var pos: Array = (entry as Dictionary).get("pos", [0, 0, 0])
+		var rot: Array = (entry as Dictionary).get("rot", [0, 0, 0])
+		m.global_position = Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
+		m.global_rotation = Vector3(float(rot[0]), float(rot[1]), float(rot[2]))
+		m.scale = Vector3.ONE * float((entry as Dictionary).get("scale", 1.0))
+		for p in (m.get("_parts") as Array):
+			(p as MeshInstance3D).material_override = solid_material()
+		m.set("world_solid", true)
+		_solid = m
+		_log("restored world object '%s' from the headset cache" % String(m.get("model_name")))

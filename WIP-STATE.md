@@ -3,6 +3,41 @@
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
 
+## ROUND 6 — ROOM REBUILD TO THE PICTURE (Jon 2026-11-24 09:54 ET, in progress)
+Jon: "Take what I have now, extract the table and redo the garage to look like the
+picture" (design/v2-vision-walkin.png) + wall readouts must become MOVABLE widgets he
+can switch between readouts and PICTURES (R6-2, next) + Quest 2 budgets stay law.
+The TABLE is untouched (his design). DONE so far:
+- presence.gd NEW: the Atlas point-sphere extracted from data_station.gd (orb only;
+  celebrate/set_fade kept). Lab places it LEFT at (-2.45, 0, 0.8). DataStation is out
+  of the scene (file remains, unused); cad_bench.bind_presence() + overview_lines()
+  getter feed the coming wall widgets; bench celebrate -> Presence.
+- lab.gd: clutter DELETED (shelves, greebles, ceiling rig, screen bank, cables, floor
+  trim, light shafts, workbench dressing). _bench_slabs() = bare dark slabs on both
+  side walls (top 0.9475); props (lamp/crates) on the right slab; arm at the right
+  slab's far end (3.5, 0.9475, -4.0); _suit_platforms() flanking the FAR opening at
+  (±2.95, -4.15); _ceiling_bars() = 3 slim WHITE HDR bars (the picture's lighting).
+  _seal() skips empty fx/screens builders. Dead dressing functions deleted.
+- room.gd: opening MOVED to the back wall (OPEN_X0/X1 ±2.9, OPEN_TOP 2.9, TERRACE_Z
+  -8.3): _build_opening() + _wall_segment_back() (3 segments, one shared material),
+  full left wall restored, right wall texture now PLAIN (shelf silhouettes removed),
+  terrace + railing rebuilt along z=-8.15. Wall strips on the back wall removed.
+- vista.gd: deck rotated -90° in main.gd (faces the back opening now); coast card_top
+  12.9->15.5, lake 12.2->14.5 (close the sky gap at the opening's top corners).
+- hud.gd: StatusStrip raised (STRIP_POS y 2.32 — it was the "grey slab" silhouetted
+  against the vista at centre view; bisected via captures dbg-*), arcs pushed out
+  (ARC_X 2.35), smaller (1.35), dimmer (0.4).
+- rig.gd AREAS/BLOCKS/PADS + prop.gd supports re-derived for the new layout.
+  RIG_TEST rewritten for the new geometry (table block, side wall, pad flank guard,
+  doorway->terrace, head-pivot turn) — PASS. panel/interaction/explode/props PASS.
+- DEFAULT VIEW: spawn framing faces the opening (captures r6-* from the entrance end).
+VERIFIED captures: r6-picture/r6-terrace/r6-lake/r6-wide (2nd pass in flight).
+STILL TO DO: R6-2 wall widgets (movable, content types incl. pictures, persistence);
+solidify test fix (lift-first drag — plane drag clamps to the inset BY DESIGN, LIFT_OFF
+0.10 m; test now lifts to 1.8 before carrying; null guards added) — re-run pending;
+commit R6 + props + solidify chunks; v2.0 export after R4-3/R4-4/R4-7.
+
+
 ## ROUND 5 (BRIEF-round5.md) — CHUNK A BUILT + VERIFIED 2026-11-24 (Helios)
 Jon rejected the enclosed Gemini garages; direction = ONE OPEN WALL to a living vista like
 the original Oculus Home, COAST chosen (concept-08), view SWAPPABLE. Research spec:

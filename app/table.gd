@@ -28,9 +28,9 @@ const CHANNEL_ENERGY := 4.0
 const BEVEL_ENERGY := 0.75
 const ETCH_ALPHA := 0.5     # end-zone etchings brighter (brief #12; was 0.26)
 const BEZEL_ENERGY := 1.4
-const LIGHT_ENERGY := 2.6
-const FILL_ENERGY := 0.7
-const RIM_ENERGY := 1.2
+const LIGHT_ENERGY := 2.05
+const FILL_ENERGY := 0.55
+const RIM_ENERGY := 0.95
 
 var inset_mat: ShaderMaterial   # grid shader on the display inset (main.gd drives its fade)
 var _ti_mat: StandardMaterial3D

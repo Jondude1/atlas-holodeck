@@ -154,7 +154,32 @@ func _apply(p: Vector4) -> void:
 	_elbow.rotation.z = deg_to_rad(p.z)
 	_wrist.rotation.z = deg_to_rad(p.w)
 
+var _poke_cd := 0.0
+
+## Round 5B: a hand coming close pokes the arm — it sulks for a beat, then resumes work.
+func poke(hand: Node3D = null) -> void:
+	if _poke_cd > 0.0 or _cur_name == "sulk":
+		return
+	_poke_cd = 6.0
+	_from = _pose
+	_to = POSES["sulk"]
+	_cur_name = "sulk"
+	_cur_dur = 2.2
+	_state_t = 0.0
+	_seg_t = 0.0
+	_seg_dur = 0.45
+	_beam.visible = false
+	_beam_mat.set_shader_parameter("fade", 0.0)
+	if hand and hand.has_method("buzz"):
+		hand.buzz(0.03, 0.4)
+
 func _process(delta: float) -> void:
+	_poke_cd = maxf(0.0, _poke_cd - delta)
+	if _poke_cd <= 0.0 and _wrist:
+		for h in get_tree().get_nodes_in_group("hand"):
+			if (h as Node3D).global_position.distance_to(_wrist.global_position) < 0.3:
+				poke(h as Node3D)
+				break
 	_state_t += delta
 	if _seg_t < 1.0:
 		_seg_t = minf(_seg_t + delta / _seg_dur, 1.0)

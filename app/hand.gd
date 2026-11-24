@@ -17,6 +17,7 @@ var _last := Vector2.ZERO
 @onready var _laser: Node3D = get_node_or_null("Laser")
 
 func _ready() -> void:
+	add_to_group("hand")   # R5B: world actors (the robot arm) find hands by this group
 	add_to_group("holodeck_hands")
 	button_pressed.connect(_on_pressed)
 	button_released.connect(_on_released)
