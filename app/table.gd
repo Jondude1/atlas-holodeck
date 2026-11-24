@@ -174,14 +174,14 @@ func _build_body() -> void:
 func _build_light() -> void:
 	_light = OmniLight3D.new()
 	_light.name = "TableGlow"
-	_light.light_color = Tokens.HOLO_PRIMARY
+	_light.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.62)   # v2 look pass: ice-white rig light, not cyan wash
 	_light.omni_range = 5.0
 	_light.position = Vector3(0, 1.3, 0.3)
 	add_child(_light)
 	# one dim fill on the player side so the slab edge, apron and legs read against the room
 	_fill = OmniLight3D.new()
 	_fill.name = "PlayerFill"
-	_fill.light_color = Tokens.HOLO_PRIMARY
+	_fill.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.62)
 	_fill.omni_range = 4.0
 	_fill.shadow_enabled = false
 	_fill.position = Vector3(0, 0.75, 1.1)
@@ -189,7 +189,7 @@ func _build_light() -> void:
 	# rim: high behind the far edge, so slab top edges and legs catch a highlight from the player's view
 	_rim = OmniLight3D.new()
 	_rim.name = "RimLight"
-	_rim.light_color = Tokens.HOLO_PRIMARY
+	_rim.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.62)
 	_rim.omni_range = 6.0
 	_rim.shadow_enabled = false
 	_rim.position = Vector3(0, 1.9, -1.1)
@@ -202,7 +202,7 @@ func _build_inset() -> void:
 	mi.name = "DisplayInset"
 	mi.mesh = plane
 	inset_mat = Fx.grid_material(Tokens.TABLE_SURFACE, Tokens.GRID_MINOR_STEP, Tokens.GRID_MAJOR_STEP)
-	inset_mat.set_shader_parameter("hot_center", 0.6)   # R3-2: the display pools light at the work centre
+	inset_mat.set_shader_parameter("hot_center", 0.25)  # v2 look pass: a gentle pool, not a floodlight (was 0.6)
 	inset_mat.set_shader_parameter("hot_radius", 0.85)
 	mi.material_override = inset_mat
 	mi.position.y = TOP_Y

@@ -115,6 +115,13 @@ func _hit() -> Variant:
 	var panel := get_tree().get_first_node_in_group("ui_panel")
 	return panel.pick(global_position, -global_basis.z) if panel else null
 
+var _panel_ray := false
+
+## The locomotion rig asks this each frame: while my ray is on the panel, my thumbstick
+## belongs to the panel (list scrolling), not to movement/turning.
+func stick_claimed() -> bool:
+	return _panel_ray
+
 func _process(_delta: float) -> void:
 	# long-press (~0.8 s) of the left menu button = RESET FLOOR (fires once per hold)
 	if _menu_down_ms >= 0 and Time.get_ticks_msec() - _menu_down_ms >= RESET_HOLD_MS:
@@ -123,6 +130,7 @@ func _process(_delta: float) -> void:
 	if not pointer:
 		return
 	var hit = _hit()
+	_panel_ray = hit != null
 	_update_hover(hit == null)
 	var length := pointer_range
 	if hit != null and hit.z < pointer_range:

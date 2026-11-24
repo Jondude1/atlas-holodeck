@@ -90,9 +90,9 @@ func _suit_platforms() -> void:
 	for z in [-3.35, 0.85]:
 		lit.add_cyl(Vector3(-3.15, 0.035, z), 0.58, 0.07, _ti(0.5), 28)
 		lit.add_cyl(Vector3(-3.15, 0.075, z), 0.5, 0.012, _deep(0.3), 28)
-		var ring := Color(Tokens.HOLO_LINE.r * 0.55, Tokens.HOLO_LINE.g * 0.55, Tokens.HOLO_LINE.b * 0.55)
+		var ring := Color(Tokens.HOLO_LINE.r * 0.32, Tokens.HOLO_LINE.g * 0.32, Tokens.HOLO_LINE.b * 0.32)
 		emi.add_torus(Vector3(-3.15, 0.078, z), 0.53, 0.012, ring, 48, 6)
-		emi.add_cyl(Vector3(-3.15, 0.004, z), 0.64, 0.008, ring * 0.22, 28)
+		emi.add_cyl(Vector3(-3.15, 0.004, z), 0.64, 0.008, ring * 0.35, 28)
 
 func _seal() -> void:
 	_lit_mat = StandardMaterial3D.new()
@@ -328,7 +328,7 @@ func _rig(t: Vector2) -> void:
 		lit.add_box(Vector3(t.x, y, t.y + sz * hz), Vector3(hx * 2.0, 0.11, 0.09), _ti(0.25))               # cross rails
 	# ring light: a lit torus slung under the rig on four spokes
 	var ring_y := 2.92
-	emi.add_torus(Vector3(t.x, ring_y, t.y), 1.02, 0.028, Color(Tokens.HOLO_LINE.r * 0.95, Tokens.HOLO_LINE.g * 0.95, Tokens.HOLO_LINE.b * 0.95), 64, 8)
+	emi.add_torus(Vector3(t.x, ring_y, t.y), 1.02, 0.016, Color(Tokens.HOLO_LINE.r * 0.4, Tokens.HOLO_LINE.g * 0.4, Tokens.HOLO_LINE.b * 0.4), 64, 8)   # v2 look pass: slim + quiet
 	lit.add_torus(Vector3(t.x, ring_y + 0.04, t.y), 1.02, 0.034, _ti(0.3), 64, 8)
 	for a in 4:
 		var dir := Vector3(cos(a * PI * 0.5 + PI * 0.25), 0, sin(a * PI * 0.5 + PI * 0.25))
@@ -339,7 +339,7 @@ func _rig(t: Vector2) -> void:
 			var p := Vector3(t.x + sx * hx * 0.56, y - 0.08, t.y + sz * hz * 0.45)
 			lit.add_cyl(p + Vector3(0, -0.05, 0), 0.085, 0.16, _ti(0.15), 12)
 			lit.add_rod(p + Vector3(0, 0.0, 0), Vector3(p.x + sx * hx * 0.44, y, p.z), 0.008, _ti(0.5), 5)
-			emi.add_cyl(p + Vector3(0, -0.135, 0), 0.07, 0.012, Tokens.HOLO_CORE * 0.85, 12)
+			emi.add_cyl(p + Vector3(0, -0.135, 0), 0.07, 0.012, Tokens.HOLO_CORE * 0.5, 12)
 
 # ---------------------------------------------------------------- floor
 
@@ -412,16 +412,16 @@ func _light_fx(t: Vector2) -> void:
 		for sz in [-1.0, 1.0]:
 			var top := Vector3(t.x + sx * 1.55 * 0.56, 2.86, t.y + sz * 1.15 * 0.45)
 			var bot := Vector3(t.x + sx * 0.5, table_top, t.y + sz * 0.3)
-			fx.add_shaft(top, 0.07, bot, 0.42, Color(0.16, 0.0, (sx + sz + 2.0) * 0.13, 1.0), 14)
-	fx.add_shaft(Vector3(t.x, 2.9, t.y), 1.0, Vector3(t.x, table_top, t.y), 0.8, Color(0.05, 0.0, 0.5, 1.0), 28)
+			fx.add_shaft(top, 0.07, bot, 0.42, Color(0.055, 0.0, (sx + sz + 2.0) * 0.045, 1.0), 14)   # v2 look pass: shafts barely-there (was ~3x)
+	fx.add_shaft(Vector3(t.x, 2.9, t.y), 1.0, Vector3(t.x, table_top, t.y), 0.8, Color(0.015, 0.0, 0.15, 1.0), 28)
 	# layered glow halos around the ring and a pool of light on the slab
 	var down := Basis(Vector3.RIGHT, deg_to_rad(90.0))                    # quad normal -> +Y ... facing up
 	var flat_up := Basis(Vector3.RIGHT, deg_to_rad(-90.0))
-	fx.add_quad(Vector3(t.x, 2.93, t.y), Vector2(3.0, 3.0), down, Color(0.16, 0.5, 0.1, 1.0))
-	fx.add_quad(Vector3(t.x, 2.94, t.y), Vector2(1.7, 1.7), down, Color(0.28, 0.5, 0.4, 1.0))
-	fx.add_quad(Vector3(t.x, table_top, t.y), Vector2(2.1, 1.1), flat_up, Color(0.22, 0.5, 0.7, 1.0))
+	fx.add_quad(Vector3(t.x, 2.93, t.y), Vector2(3.0, 3.0), down, Color(0.08, 0.5, 0.05, 1.0))
+	fx.add_quad(Vector3(t.x, 2.94, t.y), Vector2(1.7, 1.7), down, Color(0.14, 0.5, 0.2, 1.0))
+	fx.add_quad(Vector3(t.x, table_top, t.y), Vector2(2.1, 1.1), flat_up, Color(0.12, 0.5, 0.38, 1.0))
 	# floor: under-glow spill + gloss streaks under the strips and each leg (the "reflection" of the cyan lines)
-	fx.add_quad(Vector3(t.x, 0.009, t.y), Vector2(3.6, 2.2), flat_up, Color(0.38, 0.5, 0.2, 1.0))
+	fx.add_quad(Vector3(t.x, 0.009, t.y), Vector2(3.6, 2.2), flat_up, Color(0.19, 0.5, 0.1, 1.0))
 	for sz in [-1.0, 1.0]:
 		var yaw := Basis(Vector3.UP, deg_to_rad(0.0 if sz > 0 else 180.0))
 		var streak := yaw * flat_up

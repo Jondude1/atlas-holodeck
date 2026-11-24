@@ -60,6 +60,12 @@ func _ready() -> void:
 	add_child(_vista)
 	_vista.bind($WorldEnvironment.environment, _table.mood_lights())
 	_panel.bind_vista(_vista)
+	# Round 5B: the locomotion rig owns the XR origin (stick move + snap turn, clamped
+	# to the room/doorway/terrace). Inert without controllers; never touches the fallback cam.
+	var rig := LocoRig.new()
+	rig.name = "LocoRig"
+	add_child(rig)
+	rig.setup($XROrigin3D, $XROrigin3D/XRCamera3D, $XROrigin3D/LeftHand, $XROrigin3D/RightHand)
 	var print_flow := PrintFlow.new()          # confirmation-gated send-to-print (dry run only in this build)
 	print_flow.name = "PrintFlow"
 	add_child(print_flow)

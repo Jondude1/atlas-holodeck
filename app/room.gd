@@ -19,11 +19,11 @@ const OPEN_Z1 := 1.8
 const OPEN_TOP := 2.9                  # opening head height (header above)
 const TERRACE_X := -7.3                # terrace floor outer edge
 const PPM := 128               # wall texture pixels per metre
-const STRIP_ENERGY := 1.3
-const COVE_ENERGY := 1.4
-const POOL_ALPHA := 0.55
+const STRIP_ENERGY := 0.8    # v2 look pass: accent lines whisper (was 1.3)
+const COVE_ENERGY := 0.85   # v2 look pass (was 1.4)
+const POOL_ALPHA := 0.35    # v2 look pass (was 0.55)
 const SHADOW_ALPHA := 0.85
-const HALO_ALPHA := 0.22
+const HALO_ALPHA := 0.12    # v2 look pass (was 0.22)
 
 var _wall_mats: Array[StandardMaterial3D] = []
 var _lit_mats: Array[StandardMaterial3D] = []   # floor + beams: albedo scaled by fade
@@ -126,7 +126,7 @@ func _build_floor(table_xz: Vector2) -> void:
 	plane.size = Vector2(HALF_X * 2.0, Z_FRONT - Z_BACK)
 	# the texture carries the tone (dark blue-rich plate, seams + scuffs); the tint stays near white so the two don't
 	# multiply into black (brief #12: darker and richer than #8, never black)
-	var mat := _lit(Color(0.85, 0.92, 1.0), 0.6, 0.22, _floor_texture())           # glossy: the rig and table light streak across it
+	var mat := _lit(Color(0.5, 0.58, 0.68), 0.25, 0.5, _floor_texture())   # v2 look pass: satin dark floor (metallic down, roughness up)           # glossy: the rig and table light streak across it
 	mat.uv1_scale = Vector3(HALF_X * 2.0, Z_FRONT - Z_BACK, 1.0)
 	_mesh("Floor", plane, mat, Vector3(0, 0, (Z_FRONT + Z_BACK) * 0.5))
 
@@ -217,11 +217,11 @@ func _build_open_wall() -> void:
 	_lab.lit.add_box(Vector3(-HALF_X, (OPEN_TOP + HEIGHT) * 0.5, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.2, HEIGHT - OPEN_TOP, OPEN_Z1 - OPEN_Z0 + 0.2), ti)
 	_lab.lit.add_box(Vector3(-HALF_X, 0.012, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.34, 0.024, OPEN_Z1 - OPEN_Z0), ti * 0.8)
 	# the cyan light line tracing the opening's inner edge
-	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z0 + 0.11), Vector3(0.025, OPEN_TOP, 0.025), line)
-	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z1 - 0.11), Vector3(0.025, OPEN_TOP, 0.025), line)
-	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP - 0.02, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.025, 0.025, OPEN_Z1 - OPEN_Z0 - 0.2), line)
+	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z0 + 0.11), Vector3(0.025, OPEN_TOP, 0.025), line * 0.5)
+	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z1 - 0.11), Vector3(0.025, OPEN_TOP, 0.025), line * 0.5)
+	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP - 0.02, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.025, 0.025, OPEN_Z1 - OPEN_Z0 - 0.2), line * 0.5)
 	# terrace floor: the room's plate, extended past the wall line to the railing
-	var tmat := _lit(Color(0.45, 0.52, 0.62), 0.55, 0.45, _floor_texture())
+	var tmat := _lit(Color(0.45, 0.52, 0.62), 0.3, 0.5, _floor_texture())
 	tmat.uv1_scale = Vector3(-TERRACE_X - HALF_X, Z_FRONT - Z_BACK, 1.0)
 	var terrace := PlaneMesh.new()
 	terrace.size = Vector2(-TERRACE_X - HALF_X, Z_FRONT - Z_BACK)
@@ -267,14 +267,14 @@ func _wall_texture(shelves: bool, seed_v: int, strip_px: Array[int]) -> ImageTex
 	var w := int((HALF_X * 2.0) * PPM)
 	var h := int(HEIGHT * PPM)
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	var base := Tokens.ROOM_BG.lerp(Tokens.HOLO_DEEP, 0.28)
+	var base := Tokens.ROOM_BG.lerp(Tokens.HOLO_DEEP, 0.12)   # v2 look pass: walls go charcoal-dark
 	for y in h:  # vertical falloff: lit mid-height, dark toward floor and ceiling
 		var t := absf(float(y) / h - 0.55) * 2.0
 		img.fill_rect(Rect2i(0, y, w, 1), base.lerp(Tokens.ROOM_BG, clampf(t * 0.85, 0.0, 0.9)))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
 	var seam := Tokens.ROOM_BG * 0.6
-	var edge := base.lerp(Tokens.HOLO_PRIMARY, 0.22)
+	var edge := base.lerp(Tokens.HOLO_PRIMARY, 0.10)
 	var bay := PPM  # 1 m panels
 	for x in range(0, w, bay):  # panel seams with a bevel highlight beside each
 		img.fill_rect(Rect2i(x, 0, 3, h), seam)

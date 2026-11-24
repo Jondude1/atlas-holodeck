@@ -83,6 +83,23 @@ they have permanence)" — and the governing bar for all of it: **smooth and int
    Scope guard: ONE active table model solidifies at a time in v1 of this feature; parked
    bench models stay holograms. Multi-solid is a later call.
 
+## The v2 look pass (Jon's critique, 2026-11-24 09:38 ET)
+Jon sent the coast capture back: "This looks choppy and sloppy" + the Gemini walk-in
+render: "Have it more closely resemble this, get rid of the obnoxious blue lines."
+**Standing aesthetic for v2: the architecture is DARK and quiet (charcoal/satin, neutral-
+leaning); cyan exists only as thin accents and in the holograms themselves; the heroes
+are the part on the table and the view outside.** Applied 2026-11-24 (two rounds):
+table grid strengths ~halved (minor .5→.22, major .95→.42, fine .2→.08), hot centre
+.6→.25; light shafts ~⅓; ring/halo/floor-spill ~½; ceiling ring slim (tube .028→.016)
++ 0.4 factor; room strips 1.3→0.8, cove 1.4→0.85, pool .55→.35; walls deeper; floor
+satin (metallic .55→.25, rough →.5); opening light line + suit pads dimmed (pad ring
+.32 factor); the rig's three omnis retinted ice-white (HOLO_PRIMARY lerped 62% to white)
+so the room's light is neutral; vista ambient lowered (coast .27) and the env-sky
+(ambient/reflections only) desaturated 38% toward slate via VistaDeck._slate().
+Verified: captures re-shot (coast reads calm, hero = the bracket), suites pass.
+Residual blue in captures is the titanium/sky-ambient palette itself + the software
+renderer; Jon's headset read is the judge for a third round.
+
 ## Standing constraints (unchanged)
 - Cyan-only hologram/tech palette inside; the vista is the outside world (natural colour).
 - Table-first: nothing about the opening may break table function; suits are decoration.
