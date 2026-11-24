@@ -11,6 +11,9 @@ app/android/
 # Secrets — never commit credentials of any kind
 *.keystore
 *.jks
+# …except the app's one permanent release-signing key. It is committed on purpose: this is a sideloaded
+# app (no Play Store), and CI must sign every GitHub Release with the SAME key or Android refuses the update.
+!keystore/atlas-holodeck.jks
 *secret*
 *token*
 .env

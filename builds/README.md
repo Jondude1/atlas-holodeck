@@ -1,6 +1,11 @@
 # Builds
 
-Exported APKs land here locally and are **not** committed to git (see `.gitignore`).
+**Shipped builds now come from GitHub Releases** (built and signed by `.github/workflows/release.yml`
+with `keystore/atlas-holodeck.jks`; the app updates itself from them). Local exports still land here and
+are **not** committed (see `.gitignore`). A local export signed with the Godot debug key cannot update,
+or be updated by, a release build: sign local test builds with the release key
+(`GODOT_ANDROID_KEYSTORE_RELEASE_PATH=keystore/atlas-holodeck.jks`, user/password `atlasholodeck`)
+if they should be interchangeable with releases.
 
 | File | Version | Date | Notes |
 |---|---|---|---|
