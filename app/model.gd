@@ -43,6 +43,7 @@ var _schematic_mat: StandardMaterial3D
 var _scan_plane: MeshInstance3D  # child of the root, NOT a part: not in _parts/_bounds/explode
 var _scan_mat: StandardMaterial3D
 var _dim_labels: Array[Label3D] = []
+var _dim_texts: Array[String] = []  # R4-4: parked models release their label textures (text=""); texts kept here for unpark
 var _tethers: Array[Dictionary] = []  # {part, label, line}: leader line + caps label per part
 var _tether_mat: StandardMaterial3D
 var _tether_mesh: MeshInstance3D   # R4-3: ALL leader lines in ONE merged mesh (was one MeshInstance per part)
@@ -124,8 +125,10 @@ func park(to: Vector3, s := 0.55) -> void:
 	set_tether_alpha(0.0)
 	for l in _dim_labels:
 		l.visible = false
+		l.text = ""                    # R4-4: an empty Label3D holds no texture — parked models carry none
 	for t in _tethers:                 # hidden outright: a transparent label still costs a draw call
 		t["label"].visible = false
+		t["label"].text = ""
 	if _tether_mesh:
 		_tether_mesh.visible = false
 	_schematic.visible = false
@@ -144,10 +147,15 @@ func unpark() -> void:
 		return
 	_parked = false
 	_schematic.visible = true
-	for l in _dim_labels:
-		l.visible = true
-	for t in _tethers:
+	for i in _dim_labels.size():
+		_dim_labels[i].text = _dim_texts[i]   # R4-4: restore what park() released
+		_dim_labels[i].visible = true
+	for i in _tethers.size():
+		var t: Dictionary = _tethers[i]
+		t["label"].text = _part_caption(t["part"].name, i)
 		t["label"].visible = true
+	if _hot_part:
+		_style_part(_hot_part, true)          # a pinned part keeps its two-line label
 	_line_hidden.clear()
 	if _tether_mesh:
 		_tether_mesh.visible = true
@@ -352,6 +360,7 @@ func _build_dim_labels() -> void:
 		var l := Label3D.new()
 		l.name = "DimLabel%d" % i
 		l.text = Units.len_in(inches[i], long_form) + ("" if long_form else " IN")
+		_dim_texts.append(l.text)
 		l.font = load(Tokens.FONT_BOLD)
 		l.font_size = 48
 		l.pixel_size = 0.0011

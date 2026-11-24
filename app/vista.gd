@@ -74,6 +74,8 @@ var _rocks: Dictionary = {}            # name -> headland material (grade tint t
 var _grade := "day"
 var _amb: AudioStreamPlayer
 var _amb_streams: Dictionary = {}
+var _mood_tw: Tween = null   # R4-7: one mood tween at a time — a vista/grade change kills the previous one
+var _amb_tw: Tween = null    # R4-7: same discipline for the ambience volume
 var _current := "coast"
 var _env: Environment
 var _sky_mat: ProceduralSkyMaterial
@@ -176,14 +178,21 @@ func _apply_ambience(dur: float) -> void:
 	_amb.pitch_scale = float(g["pitch"])
 	if _amb.stream == target and _amb.playing:
 		if dur > 0.0:
-			create_tween().tween_property(_amb, "volume_db", float(g["vol"]), dur)
+			_amb_to(float(g["vol"]), dur)
 		else:
 			_amb.volume_db = float(g["vol"])
 		return
 	_amb.volume_db = -42.0
 	_amb.stream = target
 	_amb.play()
-	create_tween().tween_property(_amb, "volume_db", float(g["vol"]), maxf(0.3, dur))
+	_amb_to(float(g["vol"]), maxf(0.3, dur))
+
+## R4-7: the only ambience-volume tween — a new fade kills the one before it.
+func _amb_to(vol: float, dur: float) -> void:
+	if _amb_tw and _amb_tw.is_valid():
+		_amb_tw.kill()
+	_amb_tw = create_tween()
+	_amb_tw.tween_property(_amb, "volume_db", vol, dur)
 
 func _slate(c: Color) -> Color:
 	var g := Color(c.get_luminance(), c.get_luminance(), c.get_luminance() * 1.06)
@@ -212,7 +221,10 @@ func _apply_mood(d: Dictionary, dur: float) -> void:
 			o.light_color = (base[0] as Color) * (d["omni_tint"] as Color) * (g["fog"] as Color)
 			o.light_energy = float(base[1]) * float(d["omni_energy"]) * float(g["omni_mul"])
 		return
+	if _mood_tw and _mood_tw.is_valid():
+		_mood_tw.kill()
 	var tw := create_tween().set_parallel()
+	_mood_tw = tw
 	tw.tween_property(_env, "fog_light_color", fog_c, dur)
 	tw.tween_property(_env, "fog_density", float(d["fog_density"]), dur)
 	tw.tween_property(_env, "ambient_light_energy", amb_e, dur)
