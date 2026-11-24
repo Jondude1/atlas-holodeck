@@ -134,8 +134,8 @@ func _build_ui() -> void:
 	box.add_child(_build_voice_row())
 
 	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 16)
-	var reset_model := _action_button("RESET MODEL", Vector2(0, 60), 30)   # model back to table centre (cad_bench)
+	bottom.add_theme_constant_override("separation", 10)
+	var reset_model := _action_button("RESET MODEL", Vector2(0, 60), 21)   # model back to table centre (cad_bench)
 	reset_model.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	reset_model.pressed.connect(func() -> void:
 		var bench := get_tree().get_first_node_in_group("cad_bench")
@@ -144,16 +144,22 @@ func _build_ui() -> void:
 		else:
 			_model.reset_pose())
 	bottom.add_child(reset_model)
-	var fix_floor := _action_button("FIX FLOOR HEIGHT", Vector2(0, 60), 30)  # was RESET FLOOR: moves YOUR height, not the model
+	var fix_floor := _action_button("FIX FLOOR HEIGHT", Vector2(0, 60), 21)  # was RESET FLOOR: moves YOUR height, not the model
 	fix_floor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fix_floor.pressed.connect(XrBoot.reset_floor.bind("panel"))
 	bottom.add_child(fix_floor)
-	_vista_button = _action_button("VIEW: COAST", Vector2(0, 60), 24)   # Round 5: cycle the world outside the open wall
+	_vista_button = _action_button("VIEW: COAST", Vector2(0, 60), 21)   # Round 5: cycle the world outside the open wall
 	_vista_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_vista_button.pressed.connect(func() -> void:
 		if _vista:
 			_vista.cycle())
 	bottom.add_child(_vista_button)
+	_grade_button = _action_button("LIGHT: DAY", Vector2(0, 60), 21)   # R7-2: day / golden / dusk grade for the current vista
+	_grade_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grade_button.pressed.connect(func() -> void:
+		if _vista:
+			_vista.cycle_grade())
+	bottom.add_child(_grade_button)
 	box.add_child(bottom)
 
 	var send := _action_button("SEND TO PRINTER", Vector2(0, 60), 30)   # opens the confirmation card; never prints by itself
@@ -480,12 +486,17 @@ func _build_print_card() -> void:
 
 var _vista: VistaDeck
 var _vista_button: Button
+var _grade_button: Button
 
 func bind_vista(v: VistaDeck) -> void:
 	_vista = v
 	_vista_button.text = "VIEW: %s" % v.current().to_upper()
+	_grade_button.text = "LIGHT: %s" % v.grade().to_upper()
 	v.vista_changed.connect(func(nm: String) -> void:
 		_vista_button.text = "VIEW: %s" % nm.to_upper()
+		poke())
+	v.grade_changed.connect(func(nm: String) -> void:
+		_grade_button.text = "LIGHT: %s" % nm.to_upper()
 		poke())
 
 func bind_print(pf: PrintFlow) -> void:

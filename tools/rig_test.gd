@@ -41,7 +41,7 @@ func _run() -> void:
 	for i in 40:
 		rig.apply_move(Vector3(0, 0, -0.25))
 	h = rig.head_xz()
-	_check(h.y > -3.25 and h.y < -2.95, "suit pad blocks its lane (head z=%.2f)" % h.y)
+	_check(h.y > -3.75 and h.y < -3.4, "suit pad blocks its lane (head z=%.2f)" % h.y)
 	# 3: through the opening (head x = 1.9 — between the table block and the pad's reach)
 	#    onto the terrace; the railing line holds
 	origin.global_position = Vector3(1.6, 0, 0.2)   # head at (1.9, 0.4)

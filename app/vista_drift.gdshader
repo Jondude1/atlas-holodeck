@@ -4,7 +4,7 @@ render_mode unshaded, cull_disabled, depth_draw_never, blend_mix;
 // Drifting soft layers (Round 5): mist banks and the cloud band. The texture scrolls in
 // UV and the whole layer breathes (alpha sine) — all in TIME, zero CPU. depth_draw_never
 // keeps these pure overlays that never occlude the cards behind them.
-uniform sampler2D tex : source = "white";
+uniform sampler2D tex;
 uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float scroll_speed = 0.004;    // UV per second
 uniform float alpha_base = 0.5;

@@ -16,6 +16,14 @@ func _run() -> void:
 	main.call("_skip_boot")
 	if args.size() > 7:
 		main.get_node("VistaDeck").call("show_vista", String(args[7]))
+	if args.size() > 9 and String(args[9]) == "tools":
+		var bench: Node = main.get_node("CadBench")
+		bench.call("toggle_board")
+		bench.call("set_section", 0.45)
+		bench.call("set_measure", true)
+		var centre := Vector3(0, 1.05, -1.55)
+		bench.call("measure_pick", Vector3(0, 1.35, 0.6), (centre - Vector3(0, 1.35, 0.6)).normalized())
+		bench.call("measure_pick", Vector3(0.02, 2.6, -1.45), (Vector3(0.02, 1.0, -1.5) - Vector3(0.02, 2.6, -1.45)).normalized())
 	if args.size() > 8:
 		var deck: Node = main.get_node("VistaDeck")
 		for i in 3:

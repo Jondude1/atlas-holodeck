@@ -18,6 +18,7 @@ extends Node3D
 ## reads flat on the headset.
 
 signal vista_changed(name: String)
+signal grade_changed(name: String)
 
 const CENTRE := Vector3(0, 0, -1)      # room centre: cards are cylindrical around it
 const FAR_R := 55.0
@@ -30,7 +31,7 @@ const DEFS := {
 		"fog": Color(0.55, 0.72, 0.85), "ambient_energy": 0.20, "fog_density": 0.012,
 		"omni_tint": Color(1.05, 1.0, 0.9), "omni_energy": 1.0,
 		"water_y": -1.6, "water_deep": Color(0.02, 0.23, 0.38), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
-		"mist": Color(0.85, 0.93, 1.0), "mist_alpha": 0.35, "cloud_tint": Color(1, 1, 1),
+		"mist": Color(0.85, 0.93, 1.0), "mist_alpha": 0.35, "cloud_tint": Color(1, 1, 1), "boat": true,
 	},
 	"lake": {
 		"tex": "res://vistas/vista-lake.png", "card_top": 14.5,
@@ -38,7 +39,7 @@ const DEFS := {
 		"fog": Color(0.3, 0.42, 0.6), "ambient_energy": 0.23, "fog_density": 0.02,
 		"omni_tint": Color(0.75, 0.85, 1.1), "omni_energy": 0.8,
 		"water_y": -0.9, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,
-		"mist": Color(0.75, 0.85, 1.0), "mist_alpha": 0.6, "cloud_tint": Color(0.6, 0.7, 0.9),
+		"mist": Color(0.75, 0.85, 1.0), "mist_alpha": 0.6, "cloud_tint": Color(0.6, 0.7, 0.9), "boat": true,
 	},
 	"valley": {
 		"tex": "res://vistas/vista-valley.png", "card_top": 15.2,
@@ -46,11 +47,26 @@ const DEFS := {
 		"fog": Color(0.7, 0.72, 0.6), "ambient_energy": 0.27, "fog_density": 0.015,
 		"omni_tint": Color(1.1, 1.0, 0.85), "omni_energy": 0.95,
 		"water_y": 999.0, "water_deep": Color(0.02, 0.2, 0.3), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
-		"mist": Color(1.0, 0.97, 0.9), "mist_alpha": 0.45, "cloud_tint": Color(1, 0.98, 0.95),
+		"mist": Color(1.0, 0.97, 0.9), "mist_alpha": 0.45, "cloud_tint": Color(1, 0.98, 0.95), "boat": false,
 	},
 }
 
+const GRADE_ORDER: Array[String] = ["day", "golden", "dusk"]
+const GRADES := {
+	"day": {"card": Color(1, 1, 1), "sky": Color(1, 1, 1), "fog": Color(1, 1, 1), "amb_mul": 1.0, "omni_mul": 1.0, "vol": -26.0, "pitch": 1.0},
+	"golden": {"card": Color(1.09, 0.87, 0.66), "sky": Color(1.12, 0.82, 0.55), "fog": Color(1.12, 0.94, 0.74), "amb_mul": 0.8, "omni_mul": 0.9, "vol": -28.0, "pitch": 0.97},
+	"dusk": {"card": Color(0.52, 0.5, 0.66), "sky": Color(0.48, 0.45, 0.7), "fog": Color(0.6, 0.55, 0.78), "amb_mul": 0.45, "omni_mul": 0.68, "vol": -31.0, "pitch": 0.93},
+}
+const TEX_GULL: Texture2D = preload("res://textures/gull.png")
+const TEX_BOAT: Texture2D = preload("res://textures/boat.png")
+const LIFE_SHADER: Shader = preload("res://vista_life.gdshader")
+
 var _roots: Dictionary = {}            # name -> Node3D
+var _cards: Dictionary = {}            # name -> far-card material (grade tint target)
+var _domes: Dictionary = {}            # name -> sky dome material (grade tint target)
+var _grade := "day"
+var _amb: AudioStreamPlayer
+var _amb_streams: Dictionary = {}
 var _current := "coast"
 var _env: Environment
 var _sky_mat: ProceduralSkyMaterial
@@ -64,6 +80,22 @@ func _ready() -> void:
 		root.visible = nm == _current
 		_roots[nm] = root
 		add_child(root)
+	# R7-2: the vista's own soundscape — synthesized loops (ocean / lake / wind),
+	# swapped and re-graded with the view. Non-positional: it is the world's air.
+	_amb = AudioStreamPlayer.new()
+	_amb.name = "Ambience"
+	add_child(_amb)
+	for nm in ORDER:
+		var st := load("res://sounds/amb-" + nm + ".wav") as AudioStreamWAV
+		if st:
+			st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			st.loop_begin = 0
+			st.loop_end = st.data.size() / 2   # 16-bit mono frames
+			_amb_streams[nm] = st
+	_amb.stream = _amb_streams.get(_current)
+	_amb.volume_db = -26.0
+	if _amb.stream:
+		_amb.play()
 
 func current() -> String:
 	return _current
@@ -80,7 +112,9 @@ func show_vista(nm: String) -> void:
 	_current = nm
 	for k in _roots:
 		(_roots[k] as Node3D).visible = k == nm
+	_apply_grade_statics(nm)
 	_apply_mood(DEFS[nm], 0.6)
+	_apply_ambience(0.6)
 	vista_changed.emit(nm)
 
 ## main hands over the pieces of mood it owns; the first call snaps (no fade at boot).
@@ -93,7 +127,54 @@ func bind(env: Environment, lights: Array) -> void:
 	for l in _lights:
 		var o := l as OmniLight3D
 		_light_base.append([o.light_color, o.light_energy])
+	_apply_grade_statics(_current)
 	_apply_mood(DEFS[_current], 0.0)
+	_apply_ambience(0.0)
+
+func grade() -> String:
+	return _grade
+
+func cycle_grade() -> String:
+	var i := GRADE_ORDER.find(_grade)
+	_grade = GRADE_ORDER[(i + 1) % GRADE_ORDER.size()]
+	for nm in ORDER:
+		_apply_grade_statics(nm)
+	_apply_mood(DEFS[_current], 0.6)
+	_apply_ambience(0.6)
+	grade_changed.emit(_grade)
+	return _grade
+
+## The grade's static half: the painting's tint and the sky dome's colours.
+## (The mood half — fog, ambient, rig lights — lives in _apply_mood.)
+func _apply_grade_statics(nm: String) -> void:
+	var g: Dictionary = GRADES[_grade]
+	var d: Dictionary = DEFS[nm]
+	if _cards.has(nm):
+		(_cards[nm] as StandardMaterial3D).albedo_color = g["card"]
+	if _domes.has(nm):
+		var sm := _domes[nm] as ShaderMaterial
+		sm.set_shader_parameter("top_color", (d["sky_top"] as Color) * (g["sky"] as Color))
+		sm.set_shader_parameter("horizon_color", (d["sky_horizon"] as Color) * (g["sky"] as Color))
+		sm.set_shader_parameter("ground_color", (d["sky_ground"] as Color) * (g["sky"] as Color))
+
+func _apply_ambience(dur: float) -> void:
+	if _amb == null:
+		return
+	var g: Dictionary = GRADES[_grade]
+	var target: AudioStream = _amb_streams.get(_current)
+	if target == null:
+		return
+	_amb.pitch_scale = float(g["pitch"])
+	if _amb.stream == target and _amb.playing:
+		if dur > 0.0:
+			create_tween().tween_property(_amb, "volume_db", float(g["vol"]), dur)
+		else:
+			_amb.volume_db = float(g["vol"])
+		return
+	_amb.volume_db = -42.0
+	_amb.stream = target
+	_amb.play()
+	create_tween().tween_property(_amb, "volume_db", float(g["vol"]), maxf(0.3, dur))
 
 func _slate(c: Color) -> Color:
 	var g := Color(c.get_luminance(), c.get_luminance(), c.get_luminance() * 1.06)
@@ -102,8 +183,9 @@ func _slate(c: Color) -> Color:
 func _apply_mood(d: Dictionary, dur: float) -> void:
 	if _env == null:
 		return
-	var fog_c: Color = d["fog"]
-	var amb_e: float = d["ambient_energy"]
+	var g: Dictionary = GRADES[_grade]
+	var fog_c: Color = (d["fog"] as Color) * (g["fog"] as Color)
+	var amb_e: float = float(d["ambient_energy"]) * float(g["amb_mul"])
 	if dur <= 0.0:
 		_env.fog_light_color = fog_c
 		_env.fog_density = float(d["fog_density"])
@@ -118,8 +200,8 @@ func _apply_mood(d: Dictionary, dur: float) -> void:
 		for i in _lights.size():
 			var o := _lights[i] as OmniLight3D
 			var base: Array = _light_base[i]
-			o.light_color = (base[0] as Color) * (d["omni_tint"] as Color)
-			o.light_energy = float(base[1]) * float(d["omni_energy"])
+			o.light_color = (base[0] as Color) * (d["omni_tint"] as Color) * (g["fog"] as Color)
+			o.light_energy = float(base[1]) * float(d["omni_energy"]) * float(g["omni_mul"])
 		return
 	var tw := create_tween().set_parallel()
 	tw.tween_property(_env, "fog_light_color", fog_c, dur)
@@ -132,8 +214,8 @@ func _apply_mood(d: Dictionary, dur: float) -> void:
 	for i in _lights.size():
 		var o := _lights[i] as OmniLight3D
 		var base: Array = _light_base[i]
-		tw.tween_property(o, "light_color", (base[0] as Color) * (d["omni_tint"] as Color), dur)
-		tw.tween_property(o, "light_energy", float(base[1]) * float(d["omni_energy"]), dur)
+		tw.tween_property(o, "light_color", (base[0] as Color) * (d["omni_tint"] as Color) * (g["fog"] as Color), dur)
+		tw.tween_property(o, "light_energy", float(base[1]) * float(d["omni_energy"]) * float(g["omni_mul"]), dur)
 
 # ---------------------------------------------------------------- construction
 
@@ -155,6 +237,7 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	sky_sh.set_shader_parameter("horizon_color", d["sky_horizon"])
 	sky_sh.set_shader_parameter("ground_color", d["sky_ground"])
 	dome.material_override = sky_sh
+	_domes[nm] = sky_sh
 	_seal_vista_node(dome)
 	root.add_child(dome)
 	# far card: the painting itself
@@ -168,6 +251,7 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	cm.disable_fog = true
 	cm.albedo_texture = load(d["tex"]) as Texture2D
 	card.material_override = cm
+	_cards[nm] = cm
 	_seal_vista_node(card)
 	root.add_child(card)
 	# water (valley has none — its river lives in the painting)
@@ -219,7 +303,83 @@ func _build_vista(nm: String, d: Dictionary) -> Node3D:
 	band.material_override = bm
 	_seal_vista_node(band)
 	root.add_child(band)
+	# R7-2 life: a small flock working the wind + (on the water vistas) one boat
+	# crossing the horizon — both pure vertex-shader motion, one draw call each.
+	var gulls := MeshInstance3D.new()
+	gulls.name = "Gulls"
+	gulls.mesh = _gulls_mesh()
+	var gm := ShaderMaterial.new()
+	gm.shader = LIFE_SHADER
+	gm.set_shader_parameter("tex", TEX_GULL)
+	gm.set_shader_parameter("mode", 0.0)
+	gulls.material_override = gm
+	_seal_vista_node(gulls)
+	root.add_child(gulls)
+	if bool(d.get("boat", false)):
+		var boat := MeshInstance3D.new()
+		boat.name = "Boat"
+		boat.mesh = _boat_mesh()
+		boat.position = Vector3(-49.0, wy + 1.32, 0.0)
+		var bom := ShaderMaterial.new()
+		bom.shader = LIFE_SHADER
+		bom.set_shader_parameter("tex", TEX_BOAT)
+		bom.set_shader_parameter("mode", 1.0)
+		bom.set_shader_parameter("tint", Color(0.1, 0.12, 0.16, 1.0))
+		boat.material_override = bom
+		_seal_vista_node(boat)
+		root.add_child(boat)
 	return root
+
+## Five gull sprites on individual orbits, encoded per-vertex (COLOR = phase /
+## radius / flap jitter). Quads stand in the YZ plane facing the room (+X local).
+func _gulls_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var bases := [Vector3(-34, 7.5, -4), Vector3(-31, 8.6, 3), Vector3(-38, 6.8, 6), Vector3(-29, 9.4, -9), Vector3(-36, 8.1, -13)]
+	var w := 0.85
+	var h := 0.82
+	for gi in bases.size():
+		var b: Vector3 = bases[gi]
+		var enc := Color(float(gi) / float(bases.size()), float(gi % 3) / 2.0, float((gi * 7) % 5) / 4.0, 1.0)
+		var base := verts.size()
+		verts.append_array([b + Vector3(0, -h, -w), b + Vector3(0, -h, w), b + Vector3(0, h, w), b + Vector3(0, h, -w)])
+		uvs.append_array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)])
+		for k in 4:
+			cols.append(enc)
+		idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+func _boat_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var w := 1.9
+	var h := 1.55
+	verts.append_array([Vector3(0, -h, -w), Vector3(0, -h, w), Vector3(0, h, w), Vector3(0, h, -w)])
+	uvs.append_array([Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)])
+	for k in 4:
+		cols.append(Color(0.35, 0, 0, 1))
+	idx.append_array([0, 1, 2, 0, 2, 3])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 func _seal_vista_node(mi: MeshInstance3D) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
