@@ -63,6 +63,10 @@ func build(table_xz: Vector2) -> void:
 func presence() -> Presence:
 	return _lab.presence() if _lab else null
 
+## Round 3 (P3): the Lab's VistaSpill material, for VistaDeck to re-tint.
+func spill_material() -> StandardMaterial3D:
+	return _lab.spill_material() if _lab else null
+
 func set_fade(v: float) -> void:
 	_fade = v
 	if _lab:

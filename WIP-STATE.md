@@ -1,4 +1,126 @@
-# WIP-STATE — Atlas Holodeck (updated 2026-11-25 11:25 ET)
+# WIP-STATE — Atlas Holodeck (updated 2026-11-25 13:20 ET)
+
+## ITERATE ROUND 6 — P6 BUDGET RE-CHECK / STAND-DOWN: DONE 2026-11-25 (Helios)
+- No STOP file, no live lock, no foreign app/ changes at start.
+- Priority scan: P1–P5 all DONE (rounds 1–5 below); TV panel is
+  Jon-gated (Jellyfin details), heroine suit is parked (clean regen
+  extract waits on TRELLIS quota reset 2026-11-26 per SUIT04-NOTE).
+  No unfinished, ungated priority item exists this round.
+- P6 probe (its only trigger): import 0 SCRIPT ERRORs; SUITPERF
+  windowed under xvfb = 87 draw calls / 145,398 primitives / exactly
+  3 light nodes — within law (≤90 calls, exactly 3 lights), matching
+  round 5's A/B baseline. No budget problem, so no P6 build chunk.
+- No code changed this round. Resting capture from round 5
+  (shot-r5-room) remains the current North Star comparison: suits on
+  pads, teal data walls, table + vista composition intact.
+- PUSH: no push attempted — rounds 1–5 commits are still local-only
+  pending the known push_api.py incremental-tree fix; a WIP-only
+  commit adds no new blobs and does not change that status.
+- NEXT: stand down until Jon opens a new item, supplies Jellyfin
+  details for the TV panel, or the 2026-11-26 TRELLIS reset allows
+  the clean heroine-suit extract.
+
+## ITERATE ROUND 5 — P5 BOOT CASCADE: DONE + VERIFIED 2026-11-25 (Helios)
+- Boot fade was one uniform 1.5 s ramp for room+HUD+table. Now main.gd
+  boot_phases(v) maps boot progress to (room, table, hud) phases via
+  overlapping smoothstep windows (room 0.00–0.55, table 0.30–0.85,
+  hud 0.65–1.00); _set_fade applies them per layer and the table's scale
+  ease follows the table phase. The 3-light rig rides the table phase
+  (table.set_fade drives light energy), so the room powers up in layers
+  like the North Star: shell/ceiling bars → table + lights → HUD dials.
+  Endpoints exact (0→all 0, 1→all 1): skip path and resting state
+  unchanged, duration still 1.5 s, no new nodes/calls/lights, no
+  function change. Brief: BRIEF-iterate-5.md.
+- Proof: NEW tools/boot_fade_test.gd PASS (endpoints, monotonicity,
+  mid-boot ordering room>table>hud with hud=0 at v=0.4, integration:
+  room/hud _fade + table key light follow phases at v=0.5, skip lands
+  all at exactly 1). Gates: import 0 SCRIPT ERRORs; full suite PASS —
+  explode/failure/interaction/labels/library (mock hub, windowed)/
+  park_labels/panel/print_flow/props/responds/rig/silhouette/solidify/
+  tools/spill/wall_widgets/wall_live/boot_fade all PASS.
+- Budget note: SUITPERF reads 87 draw calls / 3 lights on BOTH this tree
+  and stashed HEAD — rounds 3–4's "84" figure is stale (hero-on-both-pads
+  commit landed after); 87 is the current baseline, still ≤90, lights
+  exactly 3. Not a round-5 regression (A/B proven).
+- Captures: shot-r5-bootmid (fade 0.45 via tools/boot_capture.gd: shell,
+  ceiling and vista up, table grid still dark, no HUD strip — the
+  cascade reads clearly), shot-r5-room (resting state, North Star
+  composition unchanged).
+- PUSH STATUS (2026-11-25 ~13:13 ET): commit de7589f is LOCAL ONLY.
+  One push_api.py attempt this round hit the 280 s bound with no output
+  (blob upload phase) — same scaling failure as rounds 3–4; rounds 1–5
+  all sync in one push once push_api.py gets the incremental-tree fix.
+- NEXT: priority list P1–P5 all done; P6 is conditional (only on a
+  budget problem — none: 87/90, 3 lights). Remaining loop work is
+  Jon-gated (TV panel needs Jellyfin details; heroine suit parked) —
+  future rounds should re-check P2/P4 residuals in-headset or stand
+  down per Jon's word.
+
+## ITERATE ROUND 4 — P4 WALL PANEL RICHNESS (LIVE DATA): DONE + VERIFIED 2026-11-25 (Helios)
+- Wall panels were static: chrome waveform/gauge were drawn once from a fixed
+  seed and repainted only when text lines changed. Now _PanelChrome carries a
+  wave_phase that drives BOTH oscilloscope traces and a ±0.03 gauge-sweep
+  breathing; WallPanel.tick_live() advances it 0.45 rad and requests exactly
+  one UPDATE_ONCE repaint. _process ticks each text/clock panel every 0.9 s,
+  staggered by pid hash so panels never repaint in lockstep. PICTURE panels
+  never tick (no viewport cost). Presentation only — panels stay movable
+  widgets, no new nodes/draw calls/lights, no function change.
+- Proof: NEW tools/wall_live_test.gd PASS 7/7 (phase +0.45/tick, chrome
+  matches, picture tick no-op). Gates: import 0 SCRIPT ERRORs; wall_widgets
+  PASS; full suite PASS — explode/failure/interaction/labels/library/
+  park_labels/panel/print_flow/props/responds/rig/silhouette/solidify/
+  tools/spill all PASS (library PASS only when run as documented: mock hub
+  on :8792 + HOLODECK_HUB + windowed xvfb — headless without the mock it
+  times out on the hub probe, pre-existing harness requirement, not a
+  regression; solidify timed out once under contention, PASS standalone
+  in 7 s, the known Round-3 flake pattern). Budget: SUITPERF 84 draw
+  calls / 3 lights, unchanged.
+- Captures: shot-r4-room (room matches North Star composition),
+  shot-r4-wall (OVERVIEW panel close: waveform strip + ring gauge are the
+  live elements). Honest read: in a still the panels look the same as
+  before — the gain is motion over seconds in-headset, subtle by design.
+- PUSH STATUS (2026-11-25 ~13:00 ET): commit 24a1db7 is LOCAL ONLY.
+  One push_api.py attempt this round hit the 600 s timeout with no
+  output (blob upload phase) — same scaling failure documented in
+  Round 3's push note; remote still needs the incremental-tree fix.
+  Rounds 1–4 + hero-pads commits all sync in one push once fixed.
+- NEXT round picks P5 (boot/ambience polish).
+
+## ITERATE ROUND 3 — P3 VISTASPILL FOLLOWS VISTA/GRADE SWAPS: DONE + VERIFIED 2026-11-25 (Helios)
+- VistaSpill was a static coast/day glow decal (0.82,0.87,0.93, a 0.10) in
+  lab.gd. Now: vista.gd DEFS carry per-vista "spill"/"spill_alpha" (coast =
+  the exact old static values, so coast/day is pixel-unchanged; lake
+  0.50,0.62,0.82 / 0.065 dimmer deep blue; valley 0.95,0.85,0.64 / 0.11 warm).
+  VistaDeck.spill_target() grades it with the SAME multipliers _apply_mood
+  applies to the light rig (rgb × grade fog tint, clamped ≤1; alpha × grade
+  amb_mul: day 1.0 / golden 0.8 / dusk 0.45), and _apply_mood tweens the
+  spill material's albedo in the same parallel 0.6 s mood tween (instant at
+  bind). Wiring: Lab keeps _spill_mat + spill_material(); Room delegates
+  (presence() pattern); main passes _room.spill_material() as bind()'s new
+  optional 3rd arg — older 2-arg callers unaffected. Presentation only.
+- Proof: NEW tools/spill_test.gd PASS 11/11 (coast/day == old tint exactly;
+  lake/valley exact targets; coast/dusk alpha 0.045, colour shifted).
+  Gates: import 0 SCRIPT ERRORs; full 14/14 suites PASS (solidify aborted
+  once + timed out once under CPU contention from a concurrent push/grep,
+  then PASS standalone on BOTH HEAD and this tree in ~6 s — the Round A
+  flake pattern, not a regression). Budget: SUITPERF 84 draw calls /
+  3 lights, unchanged (must run WINDOWED under xvfb — frame_post_draw
+  never fires --headless, it hangs; that cost two timeouts this round).
+  Captures: shot-r3-coast (baseline, unchanged), shot-r3-lake,
+  shot-r3-valley, shot-r3-dusk — in stills the spill is subtle by design
+  (additive alpha ≤0.11); the clearest read is dusk, where the floor pool
+  dims with the whole room instead of staying coast-pale.
+- PUSH STATUS (2026-11-25 12:24 ET): commit 465de72 is LOCAL ONLY. Three
+  push_api.py attempts this round: (1) killed mid-transfer by a runtime
+  restart, remote unchanged; (2) blob upload 400 malformed on
+  captures/shot-pic12.png (transient, GitHub said resubmit); (3) all 430
+  blobs created but the single-shot TREE creation failed 422 "request
+  timed out / input too large" — push_api.py's all-at-once tree build no
+  longer scales with this repo. Remote head verified still 6b110aca
+  (Round 2's push commit). FIX NEEDED (not this round's scope): build the
+  tree incrementally in push_api.py, or retry the push when GitHub/proxy
+  is idle — one push then syncs rounds 1–3 + the hero-pads commit.
+- NEXT round picks P4 (wall panel richness: live-feeling moving data).
 
 ## ITERATE ROUND 1 — P1 SUITS ON THE PADS: DONE + VERIFIED 2026-11-25 (Helios)
 - The TRELLIS GLBs in design/suits3d/ (arrived 09:04–09:06, 299k/294k tris,

@@ -47,6 +47,26 @@ var _pic_mat: StandardMaterial3D
 var _rim_mat: StandardMaterial3D
 var _lines: Array = []
 var _built := false
+# P4 live-feeling data: text panels advance their chrome phase on a slow staggered
+# tick (one UPDATE_ONCE repaint per tick, never per-frame). Pictures never tick.
+const LIVE_INTERVAL := 0.9
+const LIVE_STEP := 0.45
+var _live_t := 0.0
+var _live_phase := 0.0
+
+func live_phase() -> float:
+	return _live_phase
+
+## One live tick. Returns true when it actually repainted (text/clock states only).
+func tick_live() -> bool:
+	if not _built or _chrome_draw == null or type_name() == "PICTURE":
+		return false
+	_live_phase += LIVE_STEP
+	var chrome := _chrome_draw as _PanelChrome
+	chrome.wave_phase = _live_phase
+	chrome.queue_redraw()
+	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	return true
 
 ## Instrument chrome layer drawn inside the SubViewport on UPDATE_ONCE (zero 3D draw cost):
 ## subtle technical micro-grid, thin cyan inner border + corner L-brackets, concentric Stark
@@ -54,6 +74,7 @@ var _built := false
 class _PanelChrome extends Control:
 	var is_clock := false
 	var wave_seed := 0.6
+	var wave_phase := 0.0   # P4 live tick: advances ~0.45 rad per tick, shifts both traces + gauge breathing
 	var gauge_val := 0.5
 	var is_large := true
 
@@ -119,7 +140,7 @@ class _PanelChrome extends Control:
 					arc_col if major else tick_col, 1.8 if major else 1.0, true)
 		# Active progress sweep + subtle inner accent arc
 		var a0 := deg_to_rad(135.0)
-		var sweep := deg_to_rad(270.0 * clampf(gauge_val, 0.04, 1.0))
+		var sweep := deg_to_rad(270.0 * clampf(gauge_val + sin(wave_phase * 0.7) * 0.03, 0.04, 1.0))
 		draw_arc(cen, rad, a0, a0 + sweep, 40, arc_col, 3.2, true)
 		draw_arc(cen, rad * 0.74, a0 + 0.3, a0 + sweep * 0.75 + 0.3, 28, Color(0.45, 0.92, 1.0, 0.45), 1.8, true)
 		draw_circle(cen, 3.0, Color(0.62, 0.96, 1.0, 0.7))
@@ -142,8 +163,9 @@ class _PanelChrome extends Control:
 			while xx <= x1:
 				var u := (xx - x0) / maxf(x1 - x0, 1.0)
 				var env := sin(u * PI)
-				var y1 := mid_y + (sin(xx * 0.052 + wave_seed) * 0.55 + sin(xx * 0.13 + wave_seed * 2.1) * 0.28 + sin(xx * 0.019 + wave_seed * 0.7) * 0.17) * amp * (0.35 + 0.65 * env)
-				var y2 := mid_y + (sin(xx * 0.031 + wave_seed * 1.4 + 1.2) * 0.6 + cos(xx * 0.085 - wave_seed) * 0.4) * (amp * 0.55) * (0.3 + 0.7 * env)
+				var ph := wave_seed + wave_phase
+				var y1 := mid_y + (sin(xx * 0.052 + ph) * 0.55 + sin(xx * 0.13 + ph * 2.1) * 0.28 + sin(xx * 0.019 + ph * 0.7) * 0.17) * amp * (0.35 + 0.65 * env)
+				var y2 := mid_y + (sin(xx * 0.031 + ph * 1.4 + 1.2) * 0.6 + cos(xx * 0.085 - ph) * 0.4) * (amp * 0.55) * (0.3 + 0.7 * env)
 				pts1.append(Vector2(xx, y1))
 				pts2.append(Vector2(xx, y2))
 				xx += 6.0
@@ -225,6 +247,7 @@ func build(pictures_in: Array) -> void:
 	_place()
 	_apply_content()
 	_built = true
+	_live_t = -float(abs(pid.hash()) % 70) / 100.0   # stagger panels so ticks don't repaint all at once
 	set_process(true)
 
 func _build_viewport() -> void:
@@ -424,6 +447,12 @@ func _hand_wall_coords(hand: Node3D) -> Vector2:
 	return Vector2(p.z, p.y)
 
 func _process(delta: float) -> void:
+	# P4 live tick runs whether or not the panel is held (presentation only).
+	if _built and type_name() != "PICTURE":
+		_live_t += delta
+		if _live_t >= LIVE_INTERVAL:
+			_live_t = 0.0
+			tick_live()
 	if _hand == null:
 		return
 	_grab_t += delta

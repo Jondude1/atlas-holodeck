@@ -86,7 +86,7 @@ func _ready() -> void:
 	_vista.name = "VistaDeck"
 	add_child(_vista)
 	_vista.rotation.y = -PI / 2.0   # R6: the deck was built facing the old left opening; the opening is on the back wall now
-	_vista.bind($WorldEnvironment.environment, _table.mood_lights())
+	_vista.bind($WorldEnvironment.environment, _table.mood_lights(), _room.spill_material())
 	_panel.bind_vista(_vista)
 	# Round 5B: the locomotion rig owns the XR origin (stick move + snap turn, clamped
 	# to the room/doorway/terrace). Inert without controllers; never touches the fallback cam.
@@ -193,11 +193,25 @@ func _input(event: InputEvent) -> void:
 func _set_ring(v: float, param: StringName) -> void:
 	_ring_mat.set_shader_parameter(param, v)
 
+## Iterate round 5 (P5): the boot fade is a cascade, not one uniform ramp —
+## the North Star room powers up in layers: shell and ceiling bars first,
+## then the table (and with it the 3-light rig, whose energy table.set_fade
+## drives), then the HUD dials last and lightest. boot_phases maps the
+## single boot progress v to (room, table, hud) phases through overlapping
+## smoothstep windows. Endpoints are exact (v=0 -> all 0, v=1 -> all 1), so
+## the skip path and the resting state are unchanged; duration stays 1.5 s.
+static func boot_phases(v: float) -> Vector3:
+	return Vector3(
+			smoothstep(0.0, 0.55, v),
+			smoothstep(0.30, 0.85, v),
+			smoothstep(0.65, 1.0, v))
+
 func _set_fade(v: float) -> void:
-	_room.set_fade(v)
-	_hud.set_fade(v)
-	_table.set_fade(v)
-	_table.scale = Vector3.ONE * lerpf(0.94, 1.0, v)
+	var p := boot_phases(v)
+	_room.set_fade(p.x)
+	_hud.set_fade(p.z)
+	_table.set_fade(p.y)
+	_table.scale = Vector3.ONE * lerpf(0.94, 1.0, p.y)
 
 func _boot() -> void:
 	_booting = true

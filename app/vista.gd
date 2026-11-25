@@ -40,6 +40,7 @@ const DEFS := {
 		"omni_tint": Color(0.96, 0.98, 1.0), "omni_energy": 1.05,
 		"water_y": -4.2, "water_deep": Color(0.03, 0.20, 0.34), "water_spark": Color(0.65, 0.86, 0.95), "water_speed": 0.85,
 		"mist": Color(0.84, 0.90, 0.96), "mist_alpha": 0.28, "cloud_tint": Color(0.95, 0.97, 0.99), "boat": true,
+		"spill": Color(0.82, 0.87, 0.93), "spill_alpha": 0.10,   # round 3 (P3): floor spill — coast keeps the exact colour/alpha the static decal shipped with
 		"rock": Color(0.86, 0.89, 0.91), "drop": 9.5, "sea": [0.36, 0.82, 1.0],   # shader UV: v=0 at the TOP of the painting; the sea band is rows .36-.82
 		"haze": Color(0.74, 0.83, 0.90), "haze_near": 0.80, "haze_amt": 0.60, "edge": Color(0.50, 0.65, 0.82),
 		"sun_az": Vector2(-0.88, 0.47), "sun_tint": Color(0.95, 0.92, 0.82), "glitter_x": -6.0,
@@ -51,6 +52,7 @@ const DEFS := {
 		"omni_tint": Color(0.86, 0.92, 1.0), "omni_energy": 0.95,
 		"water_y": -3.0, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,
 		"mist": Color(0.75, 0.85, 1.0), "mist_alpha": 0.5, "cloud_tint": Color(0.6, 0.7, 0.9), "boat": true,
+		"spill": Color(0.50, 0.62, 0.82), "spill_alpha": 0.065,   # round 3 (P3): lake spill — dimmer, deeper blue than coast
 		"rock": Color(0.82, 0.86, 0.92), "drop": 7.0, "sea": [0.45, 0.75, 0.5],
 		"haze": Color(0.48, 0.60, 0.74), "haze_near": 0.78, "haze_amt": 0.45, "edge": Color(0.32, 0.44, 0.62),
 		"sun_az": Vector2(-0.80, -0.60), "sun_tint": Color(0.85, 0.80, 0.90), "glitter_x": 6.0,
@@ -62,6 +64,7 @@ const DEFS := {
 		"omni_tint": Color(1.02, 0.98, 0.92), "omni_energy": 1.05,
 		"water_y": 999.0, "water_deep": Color(0.02, 0.2, 0.3), "water_spark": Color(0.6, 0.9, 1.0), "water_speed": 1.0,
 		"mist": Color(0.96, 0.94, 0.88), "mist_alpha": 0.38, "cloud_tint": Color(0.96, 0.95, 0.92), "boat": false,
+		"spill": Color(0.95, 0.85, 0.64), "spill_alpha": 0.11,   # round 3 (P3): valley spill — warm sunlight pool
 		"rock": Color(0.52, 0.56, 0.42), "drop": 8.5, "sea": [0.0, 0.0, 0.0],
 		"haze": Color(0.86, 0.80, 0.68), "haze_near": 0.34, "haze_amt": 0.22, "edge": Color(0.74, 0.70, 0.64),   # haze_amt lower than the water vistas: this painting already carries its own aerial perspective (layered ridges)
 		"sun_az": Vector2(-0.55, -0.83), "sun_tint": Color(1.0, 0.85, 0.60), "glitter_x": 0.0,
@@ -95,6 +98,7 @@ var _env: Environment
 var _sky_mat: ProceduralSkyMaterial
 var _lights: Array = []                # the table's omni rig (re-tinted per vista)
 var _light_base: Array = []            # [Color, energy] per light, captured at bind
+var _spill_mat: StandardMaterial3D = null   # round 3 (P3): Lab's VistaSpill decal material — its colour travels with the mood bundle
 
 func _ready() -> void:
 	position = CENTRE
@@ -140,8 +144,22 @@ func show_vista(nm: String) -> void:
 	_apply_ambience(0.6)
 	vista_changed.emit(nm)
 
+## Round 3 (P3): the floor spill's target colour for a vista under the current
+## grade — the vista's spill tint graded by the same fog multiplier _apply_mood
+## applies to the light rig, alpha scaled by the grade's ambient multiplier.
+func spill_target(nm: String = "", grade_name: String = "") -> Color:
+	var d: Dictionary = DEFS[nm if nm != "" else _current]
+	var g: Dictionary = GRADES[grade_name if grade_name != "" else _grade]
+	var fog_mul: Color = g["fog"]
+	var base: Color = d["spill"]
+	return Color(minf(base.r * fog_mul.r, 1.0), minf(base.g * fog_mul.g, 1.0),
+			minf(base.b * fog_mul.b, 1.0), float(d["spill_alpha"]) * float(g["amb_mul"]))
+
 ## main hands over the pieces of mood it owns; the first call snaps (no fade at boot).
-func bind(env: Environment, lights: Array) -> void:
+## spill_mat (round 3, P3) is optional so older callers keep working: Lab's
+## VistaSpill decal, whose albedo follows every vista/grade swap.
+func bind(env: Environment, lights: Array, spill_mat: Material = null) -> void:
+	_spill_mat = spill_mat as StandardMaterial3D
 	_env = env
 	if env and env.sky:
 		_sky_mat = env.sky.sky_material as ProceduralSkyMaterial
@@ -226,6 +244,8 @@ func _apply_mood(d: Dictionary, dur: float) -> void:
 		_env.fog_light_color = fog_c
 		_env.fog_density = float(d["fog_density"])
 		_env.ambient_light_energy = amb_e
+		if _spill_mat:
+			_spill_mat.albedo_color = spill_target()
 		if _sky_mat:
 			# the env sky is never seen directly — it only feeds ambient + reflections, so it
 			# carries a desaturated version of the vista (soft sheen, not a blue mirror)
@@ -243,6 +263,8 @@ func _apply_mood(d: Dictionary, dur: float) -> void:
 		_mood_tw.kill()
 	var tw := create_tween().set_parallel()
 	_mood_tw = tw
+	if _spill_mat:
+		tw.tween_property(_spill_mat, "albedo_color", spill_target(), dur)
 	tw.tween_property(_env, "fog_light_color", fog_c, dur)
 	tw.tween_property(_env, "fog_density", float(d["fog_density"]), dur)
 	tw.tween_property(_env, "ambient_light_energy", amb_e, dur)

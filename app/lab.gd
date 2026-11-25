@@ -26,9 +26,14 @@ var _rng := RandomNumberGenerator.new()
 var _table_xz := Vector2.ZERO
 var _arm: RobotArm
 var _presence: Presence
+var _spill_mat: StandardMaterial3D
 
 func presence() -> Presence:
 	return _presence
+
+## Round 3 (P3): VistaDeck drives this material's colour on vista/grade swaps.
+func spill_material() -> StandardMaterial3D:
+	return _spill_mat
 
 # ---------------------------------------------------------------- colour helpers (Tokens only)
 
@@ -80,16 +85,19 @@ func build(table_xz: Vector2) -> void:
 	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.032), Fx.radial_texture(128, 2.6))
 	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 0.95)
 	add_child(gloss)
-	# R8 + feel round: daylight spill from the opening — an elongated pool of the
-	# coast's daylight colour reaching in from the threshold and dying out ~3 m
-	# inside the room (Oculus Home research: fake the spill, let it fall off fast,
-	# or the room reads as outdoors). Tuned to the default coast/day vista.
+	# R8 + feel round: daylight spill from the opening — an elongated pool of
+	# daylight reaching in from the threshold and dying out ~3 m inside the
+	# room (Oculus Home research: fake the spill, let it fall off fast, or the
+	# room reads as outdoors). Round 3 (P3): the colour is no longer static —
+	# VistaDeck re-tints this material on every vista/grade swap (the initial
+	# value below is coast/day, identical to the old static tint).
 	var spill := MeshInstance3D.new()
 	spill.name = "VistaSpill"
 	var spm := PlaneMesh.new()
 	spm.size = Vector2(5.6, 3.0)
 	spill.mesh = spm
-	spill.material_override = Fx.glow_decal(Color(0.82, 0.87, 0.93, 0.10), Fx.radial_texture(128, 2.4))
+	_spill_mat = Fx.glow_decal(Color(0.82, 0.87, 0.93, 0.10), Fx.radial_texture(128, 2.4))
+	spill.material_override = _spill_mat
 	spill.position = Vector3(0, 0.005, -3.55)
 	add_child(spill)
 
