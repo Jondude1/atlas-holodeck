@@ -49,5 +49,10 @@ void fragment() {
 	// the sky cap samples v < 0, where this blend reaches full strength
 	float ef = clamp(1.0 - smoothstep(-0.02, max(edge_fade, 0.001), UV.y), 0.0, 1.0);
 	col = mix(col, edge_color.rgb, ef * 0.8);
+	// Iterate round 2 (P2): the same melt at the card's SIDE edges (u near 0/1,
+	// the ends of the 132-degree arc) — the painting dissolved into the dome
+	// there instead of cutting hard against a paler sky.
+	float sf = 1.0 - smoothstep(0.0, 0.08, min(UV.x, 1.0 - UV.x));
+	col = mix(col, edge_color.rgb, sf * 0.75);
 	ALBEDO = col * tint.rgb;
 }

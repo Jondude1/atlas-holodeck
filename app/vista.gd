@@ -35,7 +35,7 @@ const DEFS := {
 	# dome's bright sector all agree on ONE sun per vista.
 	"coast": {
 		"tex": "res://vistas/vista-coast.png", "card_top": 9.4, "horizon": 0.36,
-		"sky_top": Color(0.24, 0.46, 0.72), "sky_horizon": Color(0.68, 0.80, 0.89), "sky_ground": Color(0.10, 0.19, 0.27),
+		"sky_top": Color(0.24, 0.46, 0.72), "sky_horizon": Color(0.57, 0.72, 0.87), "sky_ground": Color(0.10, 0.19, 0.27),   # round 2 (P2): horizon deepened toward the painting's measured horizon row (0.53,0.71,0.86) — the dome read paler than the painting beyond the card's arc
 		"fog": Color(0.66, 0.76, 0.85), "ambient_energy": 0.46, "fog_density": 0.006,
 		"omni_tint": Color(0.96, 0.98, 1.0), "omni_energy": 1.05,
 		"water_y": -4.2, "water_deep": Color(0.03, 0.20, 0.34), "water_spark": Color(0.65, 0.86, 0.95), "water_speed": 0.85,
@@ -46,7 +46,7 @@ const DEFS := {
 	},
 	"lake": {
 		"tex": "res://vistas/vista-lake.png", "card_top": 12.2, "horizon": 0.49,
-		"sky_top": Color(0.05, 0.10, 0.22), "sky_horizon": Color(0.36, 0.48, 0.66), "sky_ground": Color(0.02, 0.05, 0.11),
+		"sky_top": Color(0.05, 0.10, 0.22), "sky_horizon": Color(0.28, 0.38, 0.55), "sky_ground": Color(0.02, 0.05, 0.11),   # round 2 (P2): same fix — lake painting's horizon row measures (0.25,0.31,0.43)
 		"fog": Color(0.42, 0.54, 0.70), "ambient_energy": 0.38, "fog_density": 0.007,
 		"omni_tint": Color(0.86, 0.92, 1.0), "omni_energy": 0.95,
 		"water_y": -3.0, "water_deep": Color(0.03, 0.1, 0.2), "water_spark": Color(0.5, 0.7, 0.95), "water_speed": 0.35,

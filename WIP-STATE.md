@@ -1,7 +1,83 @@
-# WIP-STATE — Atlas Holodeck (updated 2026-11-24)
+# WIP-STATE — Atlas Holodeck (updated 2026-11-25 11:25 ET)
+
+## ITERATE ROUND 1 — P1 SUITS ON THE PADS: DONE + VERIFIED 2026-11-25 (Helios)
+- The TRELLIS GLBs in design/suits3d/ (arrived 09:04–09:06, 299k/294k tris,
+  each with a display disc) are IN: tools/decimate_suits.py (meshoptimizer,
+  suit-venv) trims the disc (face centroids y < -0.44), decimates to
+  27,482 / 25,000 tris preserving UVs/normals/PBR textures (textures capped
+  1024 → 3.0 + 2.4 MB), feet at y=0, height 1.78 m → app/suits/*.glb.
+  NOTE: meshopt simplify_with_attributes has a ctypes bug in the installed
+  binding; plain simplify is index-only so attributes stay exact.
+- app/suit.gd (SuitDisplay) + lab.gd _spawn_suits(): hero at (-2.5, 0.081,
+  -4.3), heroine at (+2.5, 0.081, -4.3), facing +Z into the room. Wake:
+  visitor < 2.4 m → visor slit + chest core fade up (emissive only, NO new
+  lights), visor yaw-tracks visitor clamped ±0.65 rad; idle ember 0.04.
+  Verified numerically (suit_capture.gd: WAKE hero=1.0 heroine=0.04).
+- Gates: import 0 SCRIPT ERRORs; 14/14 suites PASS; budget A/B via
+  tools/suit_perf.gd — baseline 78 calls / 89,866 prims → with suits 84
+  calls / 142,852 prims (+6 calls, +52,986 prims = the suits), lights
+  exactly 3 both. Captures: shot-suits-room / shot-suits-awake — room view
+  matches the North Star composition; close-up shows some decimation
+  faceting on the torso at arm's length (acceptable at room distance).
+- design/suits3d/ source GLBs (22 MB) deliberately NOT committed; they live
+  on disk only. tools/perf_probe.gd currently hangs on its hub-dependent
+  CAD case while the hub is down — pre-existing, not a suit regression.
+- NEXT round picks P2 (vista residuals) per the iterate priority list.
+
+## ITERATE ROUND 2 — P2 VISTA RESIDUALS: DONE + VERIFIED 2026-11-25 (Helios)
+- Water photo-tile (high terrace angles): baseline capture proved the blocks
+  are the ocean photo's non-matching edges stamping a seam per tile. Fix in
+  vista_water.gdshader: mirrored-repeat sampling (muv) for both layers, the
+  fine layer rotated 0.62 rad off the coarse grid, and large-scale value
+  noise (30–55 m) modulating layer mix + brightness. Terrace A/B:
+  shot-r2-terrace-base (HEAD: hard rectangular tile grid) vs
+  shot-r2-terrace2 (continuous water; only a faint mirror symmetry at the
+  centre seam, far less visible than the tiles).
+- Dome paler than painting beyond the 132° arc: measured — coast painting
+  horizon (0.53,0.71,0.86) vs dome (0.68,0.80,0.89) + a 0.12 additive glow;
+  lake painting (0.25,0.31,0.43) vs dome (0.36,0.48,0.66). Fix: coast
+  sky_horizon → (0.57,0.72,0.87), lake → (0.28,0.38,0.55) in vista.gd DEFS;
+  vista_sky glow band 0.12 → 0.05, sun sector 0.20 → 0.15; vista_card gains
+  a side-edge melt (u near 0/1 → edge_color over 0.08) mirroring its top melt.
+- Gates: import 0 SCRIPT ERRORs; 14/14 suites PASS; budget SUITPERF
+  84 draw calls / 3 lights (unchanged — shader-only). Room capture
+  shot-r2-room matches the North Star composition; sky through the opening
+  now deepens like the reference painting instead of washing pale.
+- CONCURRENT EDIT NOTICED: app/lab.gd changed at 11:26 ET mid-round (not by
+  this round — Jon's "hero on both pads, heroine parked" instruction). Left
+  untouched and OUT of this round's commit; its owner should commit it.
+- NEXT round picks P3 (VistaSpill follows vista/grade swaps).
 
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
+
+## CURRENT STATE (2026-11-24 17:37 ET) — v2.0 APK EXPORTED, all gates pass
+- `builds/AtlasHolodeck-v2.apk` — 89,978,158 bytes. Gates: `--xr_mode_openxr`
+  ✓, libopenxr_loader.so ✓, package com.jondude.holodeck ✓, RECORD_AUDIO ✓,
+  apksigner ✓, signer SHA-256 d38ad98976d4df388a6d84faea908e26b604901c85771a
+  692b7d5df76219e6e7 (matches installed builds). APKs gitignored, never
+  committed. Awaiting Jon's on-device smoke test.
+- Remote head `b109c621` (vista feel round); tree clean apart from runtime
+  scratch (builds/logs/, __pycache__).
+- Landed 2026-11-24 after the Round 6 notes below: Star Destroyer demo
+  bundle + swap load-order fix; Antigravity polish + tone-lift (full gate
+  green: 14/14 suites, exercise PASS, EX PERF resting 57, lights 3);
+  harness fixes (interaction_test model-agnostic; exercise PERF samples
+  3.6 s after panel dismiss); vista feel round (locked horizon, stepped
+  haze, fog = painted horizon colour, one sun per vista, three-rate
+  motion; coast painting NOT regenerated). Jon on the feel captures:
+  "Much better."
+- Open/blocked: R7-5 suits (TRELLIS.2 ZeroGPU quota — retry after reset);
+  R7-1 TV panel (needs Jon's Jellyfin address + vault API key); Jon's v2
+  headset checks (vista feel in stereo, hum, orb, arm, frame rate, hub
+  LAN check-in, Tailscale path). Pi DOWN (Jon fixing 2026-11-25) — SSH
+  routes via the Pi jump are dead; hub HTTP API via :3130 proxy works.
+- Process lessons: agy headless needs --dangerously-skip-permissions;
+  mock hub MUST launch with --assets AND --edit-assets; captures windowed
+  under xvfb via tools/shot.gd only; VERIFY scheduled jobs by their run
+  records — one was silently skipped by safety review on 2026-11-24.
+
+## History (pre-17:37 state, for reference)
 
 ## ROUND 6 — ROOM REBUILD TO THE PICTURE (Jon 2026-11-24 09:54 ET, in progress)
 Jon: "Take what I have now, extract the table and redo the garage to look like the
@@ -347,3 +423,40 @@ models measure 59-63 idle / 85-89 panel-active. Parked many-part models still co
 - ANTIGRAVITY first sign-in attempt FAILED at token exchange (invalid_grant): the auth URL had been hand-rebuilt from a wrapped 80-col TUI. Fix that worked: run agy under `script -qefc "sh -c 'stty cols 400 rows 60; exec ~/.local/bin/agy'"` so the URL prints (nearly) unwrapped and can be copied byte-exact. Second attempt in flight 2026-11-24 11:33 ET.
 - ANTIGRAVITY SIGNED IN 2026-11-24 11:41 ET: TUI confirms dmj1621@gmail.com (Google AI Pro), Gemini 4 Neon (High); data-collection opt-in left OFF; workspace /home/hatch trusted; `agy -p` verified ("ready"). Token at ~/.gemini/antigravity-cli/antigravity-oauth-token.
 - R8 LOOK WORKFLOW (Jon, 2026-11-24): Gemini leads look & feel/UI polish ("It does UI and UX better than you and Claude") — presentation only, function frozen. Governing reference: design/look-reference-jon-20261124.jpg. gemini_image.py gained --ref (image conditioning). First target: design/polish-targets/target-entrance-01.png (Gemini restyle of shot-pic13 from the reference) — deltas to build: much darker polished room + glossy floor reflections, framed teal data panels (waveforms/gauges) on both walls, larger denser orb at the left station, dark slab table with fine grid + floating ring under the part, chamfered opening corners, suits on ring pads (assets still TRELLIS-quota-blocked), slim dim ceiling bars, subtle floating rings over the table's far end (from Jon's reference — they return as environment, chrome toggle still governs UI clutter).
+
+## ROUND A — HERO HOLOGRAM PRESENCE (2026-11-25)
+- cad_model.gd DISPLAY_FIT_M 0.82 → 0.96. Tried 1.4 first: the destroyer's long
+  axis lies across the table's DEPTH (its 5.54 in maps to model Z), so at 1.4 the
+  volume measured 1.40 m in Z vs the 1.22 m slab / 1.0 m inset — overhang front
+  and back (demo_probe AABB). At 0.96: displayed (0.571 × 0.345 × 0.961) m,
+  inside the inset with margin; dims readouts unchanged (3.3 × 5.54 × 1.99 IN —
+  dims divide by display_scale). NEXT-ROUND OPTION (needs a Jon/parent call):
+  yaw the demo 90° in the swap so its length runs along the table's 2.2 m axis —
+  that would make a ~1.4 m fit clean.
+- Hero rings (new app/hero_ring.gd + cad_model._build_hero_rings): two TorusMesh
+  rings as model children sharing Fx.mesh_part_material() (instance params pin
+  the resolved state; the section clip applies to them too). RingUnder: R =
+  0.62 × footprint bounding radius, flat, 5 mm over the model's base plane,
+  wire-alpha 0.60, yaw +5°/s. RingOrbit: R = 1.18 × bounding radius, tilt 18°
+  about X, pivot raised so its low arc clears the base plane, wire-alpha 0.42,
+  yaw −3.5°/s. Rotation lives on the pivots because grabbable toggles
+  set_process on the model root. Visibility rides _set_state/park/unpark
+  overrides: shown when materialized, hidden when parked, follow grab, scale
+  and solidify as children. Cost: +2 draw calls; lights still 3.
+- Verification: import 0 SCRIPT ERRORs; suites panel/tools/interaction/labels/
+  explode/solidify/wall_widgets ALL PASS. solidify needed a clean standalone
+  re-run (PASS in ~10 s): under parallel cron contention it starved once and
+  false-exited once — environment flake, not a regression. Captures:
+  ra-base1/2 (before), ra-try140 (1.4 diagnostic), ra-hero1/2 (after),
+  demo_probe AABB-verified at both fits.
+- Residuals: from the entrance the ship still washes pale against the bright
+  vista (fresnel volume vs bright backdrop — a shader/exposure matter for a
+  later round); shot.gd snaps ~2 frames after boot-skip, so entrance stills
+  catch the demo mid-materialize — judge the ship from ra-hero2 and the probe
+  capture, the rings from either.
+- PUSH STATUS (2026-11-25 11:35 ET): commit d0957cf is LOCAL ONLY. Two
+  push_api.py attempts this round did not land (remote head still b109c621;
+  the script re-uploads all 418 blobs / 163 MB every run at ~0.1-0.3 MB/s
+  through the proxy and the first attempt exited silently mid-transfer).
+  Re-run `python3 push_api.py` when the network is idle; expect 15-45 min.
+  NOTE: a447f8e (Iteration A) is also ahead of remote — one push syncs all.

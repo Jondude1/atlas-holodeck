@@ -28,8 +28,10 @@ void fragment() {
 	vec2 dxz = dir.xz / max(length(dir.xz), 0.05);
 	float sa = max(dot(dxz, sun_dir), 0.0);
 	// a soft luminous band hugging the horizon (sun haze / sea glare), stronger sunward
-	col += horizon_color.rgb * exp(-abs(h) / max(horizon_softness, 0.001)) * 0.12 * (0.55 + 0.4 * pow(sa, 2.0));
+	// Iterate round 2 (P2): 0.12 -> 0.05 — the additive band lifted the dome
+	// visibly PALER than the painting wherever the card's 132-degree arc ended.
+	col += horizon_color.rgb * exp(-abs(h) / max(horizon_softness, 0.001)) * 0.05 * (0.55 + 0.4 * pow(sa, 2.0));
 	// the sun's own glow sector, low over the horizon — a brightening, not a blast
-	col += sun_color.rgb * pow(sa, 4.0) * exp(-abs(h) / 0.13) * 0.20;
+	col += sun_color.rgb * pow(sa, 4.0) * exp(-abs(h) / 0.13) * 0.15;
 	ALBEDO = col;
 }

@@ -59,6 +59,7 @@ func build(table_xz: Vector2) -> void:
 	# readouts return as movable wall widgets (R6-2), Atlas as the free-floating Presence.
 	_bench_slabs()
 	_suit_platforms()
+	_spawn_suits()
 	_ceiling_bars()
 	_seal()
 	_spawn_props()
@@ -113,6 +114,21 @@ func build(table_xz: Vector2) -> void:
 
 ## Round 6 / R8 tone-lift: two ring-lit display platforms flanking the FAR opening, inside the room —
 ## readable satin charcoal bases with crisp cyan rings matching the look reference.
+## Iterate round 1 (P1): the suits themselves, standing on the pads below —
+## hero on BOTH pads for now (Jon, 2026-11-25 — heroine parked until her
+## clean model lands), facing into the room (+Z) as in the North Star.
+func _spawn_suits() -> void:
+	var spots := [
+		["SuitHero", "res://suits/suit_hero.glb", -2.5],
+		["SuitHeroR", "res://suits/suit_hero.glb", 2.5],
+	]
+	for s in spots:
+		var suit := SuitDisplay.new()
+		suit.name = String(s[0])
+		suit.position = Vector3(float(s[2]), 0.081, -4.3)   # pad top
+		add_child(suit)
+		suit.setup(String(s[1]))
+
 func _suit_platforms() -> void:
 	for px in [-2.5, 2.5]:
 		lit.add_cyl(Vector3(px, 0.035, -4.3), 0.58, 0.07, Color(0.32, 0.35, 0.39), 28)

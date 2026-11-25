@@ -29,12 +29,47 @@ float wave(vec2 p, vec2 dir, float freq, float spd) {
 	return sin(dot(p, dir) * freq + TIME * spd) * 0.5 + 0.5;
 }
 
+// Iterate round 2 (P2): large-scale value noise — the periodicity breaker.
+// The two photo layers below repeat every ~22 m / ~7.7 m; from the terrace
+// (high angle) that grid read as photo TILES. A smooth hash noise at ~30-55 m
+// scales modulates the layer mix and the brightness, so no two tile repeats
+// ever present the same pattern to the eye. No texture, no extra draw calls.
+float vhash(vec2 g) {
+	return fract(sin(dot(g, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+	vec2 g = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(vhash(g), vhash(g + vec2(1.0, 0.0)), u.x),
+		mix(vhash(g + vec2(0.0, 1.0)), vhash(g + vec2(1.0, 1.0)), u.x), u.y);
+}
+
+// Mirrored-repeat sampling: the ocean photo's edges do not match each other,
+// so plain repeat stamped a rectangular seam at every tile border (the blocks
+// in the baseline terrace capture). Mirroring makes every border continuous.
+vec2 muv(vec2 uv) {
+	vec2 m = mod(uv, 2.0);
+	return 1.0 - abs(m - 1.0);
+}
+
 void fragment() {
 	vec2 p = wpos.xz;
-	// two photographic layers, different scales, drifting against each other
-	vec3 l1 = texture(tex, p * 0.045 + vec2(TIME * 0.006, TIME * 0.0022) * speed).rgb;
-	vec3 l2 = texture(tex, p * 0.13 - vec2(TIME * 0.004, -TIME * 0.005) * speed).rgb;
-	vec3 col = mix(l1, l2, 0.42);
+	// two photographic layers, different scales, drifting against each other;
+	// the fine layer is ROTATED off the coarse layer's grid so their repeats
+	// never align into a visible tile lattice from above
+	float ca = cos(0.62);
+	float sa = sin(0.62);
+	mat2 rot = mat2(vec2(ca, -sa), vec2(sa, ca));
+	vec3 l1 = texture(tex, muv(p * 0.045 + vec2(TIME * 0.006, TIME * 0.0022) * speed)).rgb;
+	vec3 l2 = texture(tex, muv(rot * p * 0.13 - vec2(TIME * 0.004, -TIME * 0.005) * speed)).rgb;
+	// macro variation: the mix ratio and overall brightness wander at scales
+	// far larger than either tile, breaking the repeat the eye locks onto
+	float macro = vnoise(p * 0.018 + vec2(TIME * 0.0016, 0.0) * speed);
+	float macro2 = vnoise(p * 0.034 + 7.3 - vec2(0.0, TIME * 0.0011) * speed);
+	vec3 col = mix(l1, l2, clamp(0.42 + (macro - 0.5) * 0.55, 0.08, 0.76));
+	col *= 0.90 + macro * 0.13 + macro2 * 0.07;
 	// depth grade: darker + deeper near, easing to the photo's own colour out far
 	float dist_fade = clamp(1.0 - length(p) / 90.0, 0.25, 1.0);
 	col = mix(col, col * deep_color.rgb * 2.4, 0.35 * dist_fade);
