@@ -1,7 +1,8 @@
 name: Build & release APK
 
 # Every push to main builds a signed Quest APK and publishes it as a GitHub Release.
-# The app's in-headset updater (app/updater.gd) reads releases/latest and installs it.
+# Versions continue from Jon's hand builds: v2.2, v2.3, ... The in-headset updater (app/updater.gd) reads
+# releases/latest and installs it.
 # Pull requests and manual runs build and verify the APK (downloadable as a run artifact) but publish nothing.
 on:
   push:
@@ -75,10 +76,15 @@ jobs:
           fi
           ~/godot/godot --version
 
-      - name: Stamp version (0.2.<run number>)
+      - name: Stamp version (2.<n>, one past the latest release; Jon's hand builds went up to v2.1)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          N="${{ github.run_number }}"
-          VER="0.2.${N}"
+          LAST="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          case "$LAST" in v2.*) PREV="${LAST##*.}" ;; *) PREV=1 ;; esac
+          N=$((PREV + 1))
+          VER="2.${N}"
+          # versionCode = N too: the updater compares the trailing number of the tag with the installed version.
           sed -i "s|^version/code=.*|version/code=${N}|; s|^version/name=.*|version/name=\"${VER}\"|" app/export_presets.cfg
           sed -i "s|^config/version=.*|config/version=\"${VER}\"|" app/project.godot
           grep -E '^version/(code|name)=' app/export_presets.cfg

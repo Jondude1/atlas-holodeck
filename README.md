@@ -26,7 +26,7 @@ keystore/ the one permanent release-signing key (committed on purpose)
 
 ## Updates (no more hand-sideloading)
 
-Every push to `main` makes GitHub Actions export a signed APK (version `0.2.<run>`) and publish it
+Every push to `main` makes GitHub Actions export a signed APK (versions continue from the hand builds: `v2.2`, `v2.3`, ...) and publish it
 as a [GitHub Release](https://github.com/Jondude1/atlas-holodeck/releases). In the headset, the
 version button beside **ATLAS HOLODECK** on the panel checks the latest release (on its own 20 s
 after launch, then every 30 min), turns into **UPDATE TO vX**, downloads, and opens Android's

@@ -22,7 +22,7 @@ const AUTO_CHECK_EVERY_S := 1800.0     # quiet re-check at most every 30 minutes
 const INSTALL_PERMISSION := "android.permission.REQUEST_INSTALL_PACKAGES"
 
 var state := S.IDLE
-var latest_version := ""   # e.g. "0.2.14" (the release tag without the leading v)
+var latest_version := ""   # e.g. "2.14" (the release tag without the leading v)
 var latest_code := 0
 var reason := ""           # short, panel-sized text for FAILED / NEEDS_PERMISSION
 var progress := 0.0
@@ -51,11 +51,11 @@ func _ready() -> void:
 	add_child(_dl)
 	_log("installed v%s (code %d)%s" % [installed_version(), installed_code(), "" if auto_enabled() else " - auto-check off (local/dev build)"])
 
-## The version CI stamped into project.godot ("0.2.<run>"); local builds say "0.1.0".
+## The version CI stamped into project.godot ("2.<n>"); local builds say "2.1-dev".
 func installed_version() -> String:
 	return str(ProjectSettings.get_setting("application/config/version", "0"))
 
-## Trailing number of the version = the CI run number = the APK versionCode. 0 for local/dev builds.
+## Trailing number of the version = the release number n = the APK versionCode. 0 for local/dev builds.
 func installed_code() -> int:
 	return code_of(installed_version())
 
