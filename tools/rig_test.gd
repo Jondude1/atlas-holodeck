@@ -1,8 +1,9 @@
 extends SceneTree
-## Locomotion rig test (NOT shipped): drives LocoRig.apply_move/apply_turn directly with a
-## simulated head offset and asserts the clamping rules — walls hold, the doorway is the
-## only way out, the terrace railing line holds, the table blocks, and a snap turn pivots
-## on the head. Run: godot --headless --path app --script ../tools/rig_test.gd
+## Locomotion rig test (NOT shipped) — Round 6 layout: drives LocoRig.apply_move/apply_turn
+## with a simulated head offset and asserts the clamping rules: the table blocks, the back
+## wall holds outside the opening, the opening is the only way out, the terrace railing
+## line holds, and a snap turn pivots on the head.
+## Run: godot --headless --path app --script ../tools/rig_test.gd
 var _fails := 0
 
 func _check(cond: bool, label: String) -> void:
@@ -22,33 +23,32 @@ func _run() -> void:
 	var rig: Node = main.get_node("LocoRig")
 	var origin: Node3D = main.get_node("XROrigin3D")
 	var cam: Node3D = main.get_node("XROrigin3D/XRCamera3D")
-	# simulate a roomscale head offset: the head stands 0.3 right, 0.2 toward the table
-	origin.global_position = Vector3.ZERO
 	cam.position = Vector3(0.3, 1.6, 0.2)
-	await process_frame
-	var head0: Vector2 = rig.head_xz()
-	_check(head0.distance_to(Vector2(0.3, 0.2)) < 0.01, "head offset tracked (got %s)" % head0)
-	# 1: walking -x from the middle of the room must stop at the wall (x >= -3.72 area edge
-	#    is only crossable inside the doorway z band; head z = 0.2 IS in the band, so use a
-	#    z outside the band for the wall test first: teleport the origin so head z = 2.4)
-	origin.global_position = Vector3(0, 0, 2.2)   # head z = 2.4, outside the doorway band
+	# 1: the table blocks a straight walk into it (head starts south of the table)
+	origin.global_position = Vector3(0, 0, 0.2)   # head at (0.3, 0.4)
 	for i in 40:
-		rig.apply_move(Vector3(-0.25, 0, 0))
+		rig.apply_move(Vector3(0, 0, -0.25))
 	var h: Vector2 = rig.head_xz()
-	_check(h.x > -3.85 and h.x < -3.5, "wall holds outside the doorway (head x=%.2f)" % h.x)
-	# 2: through the doorway (head z in band) onto the terrace, railing line holds
-	origin.global_position = Vector3(-0.3, 0, -0.2)  # head back at (0, 0)
-	cam.position = Vector3(0.3, 1.6, 0.2)
-	for i in 60:
-		rig.apply_move(Vector3(-0.25, 0, 0))
-	h = rig.head_xz()
-	_check(h.x < -6.6 and h.x > -7.05, "terrace reached, railing holds (head x=%.2f)" % h.x)
-	# 3: the table blocks a straight walk into it
-	origin.global_position = Vector3(-0.3, 0, -3.4)  # head at (0, -3.2), south of the table
+	_check(h.y < -0.35 and h.y > -0.75, "table blocks (head z=%.2f)" % h.y)
+	# 2: a side wall holds (open floor lane along the entrance end)
+	origin.global_position = Vector3(0, 0, 1.6)   # head at (0.3, 1.8)
 	for i in 40:
-		rig.apply_move(Vector3(0, 0, 0.25))
+		rig.apply_move(Vector3(0.25, 0, 0))
 	h = rig.head_xz()
-	_check(h.y < -2.35 and h.y > -2.75, "table blocks (head z=%.2f)" % h.y)
+	_check(h.x >= 3.5 and h.x <= 3.72, "side wall holds (head x=%.2f)" % h.x)
+	# 2b: the suit pad guards the opening's flank — walking its lane stops at the pad
+	origin.global_position = Vector3(2.2, 0, 0.2)   # head at (2.5, 0.4), dead centre of the pad's lane
+	for i in 40:
+		rig.apply_move(Vector3(0, 0, -0.25))
+	h = rig.head_xz()
+	_check(h.y > -3.8 and h.y < -3.45, "suit pad blocks its lane (head z=%.2f)" % h.y)
+	# 3: through the opening (head x = 1.62 — the corridor between the table block's
+	#    edge at 1.55 and the pad guard's reach at 1.82) onto the terrace; railing holds
+	origin.global_position = Vector3(1.32, 0, 0.2)   # head at (1.62, 0.4)
+	for i in 60:
+		rig.apply_move(Vector3(0, 0, -0.25))
+	h = rig.head_xz()
+	_check(h.y < -8.2 and h.y > -8.7, "terrace reached, railing holds (head z=%.2f)" % h.y)
 	# 4: snap turn pivots on the head — head world position must not move
 	var before: Vector2 = rig.head_xz()
 	rig.apply_turn(deg_to_rad(-30.0))

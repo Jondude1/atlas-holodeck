@@ -1,7 +1,240 @@
-# WIP-STATE — Atlas Holodeck (updated 2026-11-24)
+# WIP-STATE — Atlas Holodeck (updated 2026-11-25 13:20 ET)
+
+## ITERATE ROUND 6 — P6 BUDGET RE-CHECK / STAND-DOWN: DONE 2026-11-25 (Helios)
+- No STOP file, no live lock, no foreign app/ changes at start.
+- Priority scan: P1–P5 all DONE (rounds 1–5 below); TV panel is
+  Jon-gated (Jellyfin details), heroine suit is parked (clean regen
+  extract waits on TRELLIS quota reset 2026-11-26 per SUIT04-NOTE).
+  No unfinished, ungated priority item exists this round.
+- P6 probe (its only trigger): import 0 SCRIPT ERRORs; SUITPERF
+  windowed under xvfb = 87 draw calls / 145,398 primitives / exactly
+  3 light nodes — within law (≤90 calls, exactly 3 lights), matching
+  round 5's A/B baseline. No budget problem, so no P6 build chunk.
+- No code changed this round. Resting capture from round 5
+  (shot-r5-room) remains the current North Star comparison: suits on
+  pads, teal data walls, table + vista composition intact.
+- PUSH: no push attempted — rounds 1–5 commits are still local-only
+  pending the known push_api.py incremental-tree fix; a WIP-only
+  commit adds no new blobs and does not change that status.
+- NEXT: stand down until Jon opens a new item, supplies Jellyfin
+  details for the TV panel, or the 2026-11-26 TRELLIS reset allows
+  the clean heroine-suit extract.
+
+## ITERATE ROUND 5 — P5 BOOT CASCADE: DONE + VERIFIED 2026-11-25 (Helios)
+- Boot fade was one uniform 1.5 s ramp for room+HUD+table. Now main.gd
+  boot_phases(v) maps boot progress to (room, table, hud) phases via
+  overlapping smoothstep windows (room 0.00–0.55, table 0.30–0.85,
+  hud 0.65–1.00); _set_fade applies them per layer and the table's scale
+  ease follows the table phase. The 3-light rig rides the table phase
+  (table.set_fade drives light energy), so the room powers up in layers
+  like the North Star: shell/ceiling bars → table + lights → HUD dials.
+  Endpoints exact (0→all 0, 1→all 1): skip path and resting state
+  unchanged, duration still 1.5 s, no new nodes/calls/lights, no
+  function change. Brief: BRIEF-iterate-5.md.
+- Proof: NEW tools/boot_fade_test.gd PASS (endpoints, monotonicity,
+  mid-boot ordering room>table>hud with hud=0 at v=0.4, integration:
+  room/hud _fade + table key light follow phases at v=0.5, skip lands
+  all at exactly 1). Gates: import 0 SCRIPT ERRORs; full suite PASS —
+  explode/failure/interaction/labels/library (mock hub, windowed)/
+  park_labels/panel/print_flow/props/responds/rig/silhouette/solidify/
+  tools/spill/wall_widgets/wall_live/boot_fade all PASS.
+- Budget note: SUITPERF reads 87 draw calls / 3 lights on BOTH this tree
+  and stashed HEAD — rounds 3–4's "84" figure is stale (hero-on-both-pads
+  commit landed after); 87 is the current baseline, still ≤90, lights
+  exactly 3. Not a round-5 regression (A/B proven).
+- Captures: shot-r5-bootmid (fade 0.45 via tools/boot_capture.gd: shell,
+  ceiling and vista up, table grid still dark, no HUD strip — the
+  cascade reads clearly), shot-r5-room (resting state, North Star
+  composition unchanged).
+- PUSH STATUS (2026-11-25 ~13:13 ET): commit de7589f is LOCAL ONLY.
+  One push_api.py attempt this round hit the 280 s bound with no output
+  (blob upload phase) — same scaling failure as rounds 3–4; rounds 1–5
+  all sync in one push once push_api.py gets the incremental-tree fix.
+- NEXT: priority list P1–P5 all done; P6 is conditional (only on a
+  budget problem — none: 87/90, 3 lights). Remaining loop work is
+  Jon-gated (TV panel needs Jellyfin details; heroine suit parked) —
+  future rounds should re-check P2/P4 residuals in-headset or stand
+  down per Jon's word.
+
+## ITERATE ROUND 4 — P4 WALL PANEL RICHNESS (LIVE DATA): DONE + VERIFIED 2026-11-25 (Helios)
+- Wall panels were static: chrome waveform/gauge were drawn once from a fixed
+  seed and repainted only when text lines changed. Now _PanelChrome carries a
+  wave_phase that drives BOTH oscilloscope traces and a ±0.03 gauge-sweep
+  breathing; WallPanel.tick_live() advances it 0.45 rad and requests exactly
+  one UPDATE_ONCE repaint. _process ticks each text/clock panel every 0.9 s,
+  staggered by pid hash so panels never repaint in lockstep. PICTURE panels
+  never tick (no viewport cost). Presentation only — panels stay movable
+  widgets, no new nodes/draw calls/lights, no function change.
+- Proof: NEW tools/wall_live_test.gd PASS 7/7 (phase +0.45/tick, chrome
+  matches, picture tick no-op). Gates: import 0 SCRIPT ERRORs; wall_widgets
+  PASS; full suite PASS — explode/failure/interaction/labels/library/
+  park_labels/panel/print_flow/props/responds/rig/silhouette/solidify/
+  tools/spill all PASS (library PASS only when run as documented: mock hub
+  on :8792 + HOLODECK_HUB + windowed xvfb — headless without the mock it
+  times out on the hub probe, pre-existing harness requirement, not a
+  regression; solidify timed out once under contention, PASS standalone
+  in 7 s, the known Round-3 flake pattern). Budget: SUITPERF 84 draw
+  calls / 3 lights, unchanged.
+- Captures: shot-r4-room (room matches North Star composition),
+  shot-r4-wall (OVERVIEW panel close: waveform strip + ring gauge are the
+  live elements). Honest read: in a still the panels look the same as
+  before — the gain is motion over seconds in-headset, subtle by design.
+- PUSH STATUS (2026-11-25 ~13:00 ET): commit 24a1db7 is LOCAL ONLY.
+  One push_api.py attempt this round hit the 600 s timeout with no
+  output (blob upload phase) — same scaling failure documented in
+  Round 3's push note; remote still needs the incremental-tree fix.
+  Rounds 1–4 + hero-pads commits all sync in one push once fixed.
+- NEXT round picks P5 (boot/ambience polish).
+
+## ITERATE ROUND 3 — P3 VISTASPILL FOLLOWS VISTA/GRADE SWAPS: DONE + VERIFIED 2026-11-25 (Helios)
+- VistaSpill was a static coast/day glow decal (0.82,0.87,0.93, a 0.10) in
+  lab.gd. Now: vista.gd DEFS carry per-vista "spill"/"spill_alpha" (coast =
+  the exact old static values, so coast/day is pixel-unchanged; lake
+  0.50,0.62,0.82 / 0.065 dimmer deep blue; valley 0.95,0.85,0.64 / 0.11 warm).
+  VistaDeck.spill_target() grades it with the SAME multipliers _apply_mood
+  applies to the light rig (rgb × grade fog tint, clamped ≤1; alpha × grade
+  amb_mul: day 1.0 / golden 0.8 / dusk 0.45), and _apply_mood tweens the
+  spill material's albedo in the same parallel 0.6 s mood tween (instant at
+  bind). Wiring: Lab keeps _spill_mat + spill_material(); Room delegates
+  (presence() pattern); main passes _room.spill_material() as bind()'s new
+  optional 3rd arg — older 2-arg callers unaffected. Presentation only.
+- Proof: NEW tools/spill_test.gd PASS 11/11 (coast/day == old tint exactly;
+  lake/valley exact targets; coast/dusk alpha 0.045, colour shifted).
+  Gates: import 0 SCRIPT ERRORs; full 14/14 suites PASS (solidify aborted
+  once + timed out once under CPU contention from a concurrent push/grep,
+  then PASS standalone on BOTH HEAD and this tree in ~6 s — the Round A
+  flake pattern, not a regression). Budget: SUITPERF 84 draw calls /
+  3 lights, unchanged (must run WINDOWED under xvfb — frame_post_draw
+  never fires --headless, it hangs; that cost two timeouts this round).
+  Captures: shot-r3-coast (baseline, unchanged), shot-r3-lake,
+  shot-r3-valley, shot-r3-dusk — in stills the spill is subtle by design
+  (additive alpha ≤0.11); the clearest read is dusk, where the floor pool
+  dims with the whole room instead of staying coast-pale.
+- PUSH STATUS (2026-11-25 12:24 ET): commit 465de72 is LOCAL ONLY. Three
+  push_api.py attempts this round: (1) killed mid-transfer by a runtime
+  restart, remote unchanged; (2) blob upload 400 malformed on
+  captures/shot-pic12.png (transient, GitHub said resubmit); (3) all 430
+  blobs created but the single-shot TREE creation failed 422 "request
+  timed out / input too large" — push_api.py's all-at-once tree build no
+  longer scales with this repo. Remote head verified still 6b110aca
+  (Round 2's push commit). FIX NEEDED (not this round's scope): build the
+  tree incrementally in push_api.py, or retry the push when GitHub/proxy
+  is idle — one push then syncs rounds 1–3 + the hero-pads commit.
+- NEXT round picks P4 (wall panel richness: live-feeling moving data).
+
+## ITERATE ROUND 1 — P1 SUITS ON THE PADS: DONE + VERIFIED 2026-11-25 (Helios)
+- The TRELLIS GLBs in design/suits3d/ (arrived 09:04–09:06, 299k/294k tris,
+  each with a display disc) are IN: tools/decimate_suits.py (meshoptimizer,
+  suit-venv) trims the disc (face centroids y < -0.44), decimates to
+  27,482 / 25,000 tris preserving UVs/normals/PBR textures (textures capped
+  1024 → 3.0 + 2.4 MB), feet at y=0, height 1.78 m → app/suits/*.glb.
+  NOTE: meshopt simplify_with_attributes has a ctypes bug in the installed
+  binding; plain simplify is index-only so attributes stay exact.
+- app/suit.gd (SuitDisplay) + lab.gd _spawn_suits(): hero at (-2.5, 0.081,
+  -4.3), heroine at (+2.5, 0.081, -4.3), facing +Z into the room. Wake:
+  visitor < 2.4 m → visor slit + chest core fade up (emissive only, NO new
+  lights), visor yaw-tracks visitor clamped ±0.65 rad; idle ember 0.04.
+  Verified numerically (suit_capture.gd: WAKE hero=1.0 heroine=0.04).
+- Gates: import 0 SCRIPT ERRORs; 14/14 suites PASS; budget A/B via
+  tools/suit_perf.gd — baseline 78 calls / 89,866 prims → with suits 84
+  calls / 142,852 prims (+6 calls, +52,986 prims = the suits), lights
+  exactly 3 both. Captures: shot-suits-room / shot-suits-awake — room view
+  matches the North Star composition; close-up shows some decimation
+  faceting on the torso at arm's length (acceptable at room distance).
+- design/suits3d/ source GLBs (22 MB) deliberately NOT committed; they live
+  on disk only. tools/perf_probe.gd currently hangs on its hub-dependent
+  CAD case while the hub is down — pre-existing, not a suit regression.
+- NEXT round picks P2 (vista residuals) per the iterate priority list.
+
+## ITERATE ROUND 2 — P2 VISTA RESIDUALS: DONE + VERIFIED 2026-11-25 (Helios)
+- Water photo-tile (high terrace angles): baseline capture proved the blocks
+  are the ocean photo's non-matching edges stamping a seam per tile. Fix in
+  vista_water.gdshader: mirrored-repeat sampling (muv) for both layers, the
+  fine layer rotated 0.62 rad off the coarse grid, and large-scale value
+  noise (30–55 m) modulating layer mix + brightness. Terrace A/B:
+  shot-r2-terrace-base (HEAD: hard rectangular tile grid) vs
+  shot-r2-terrace2 (continuous water; only a faint mirror symmetry at the
+  centre seam, far less visible than the tiles).
+- Dome paler than painting beyond the 132° arc: measured — coast painting
+  horizon (0.53,0.71,0.86) vs dome (0.68,0.80,0.89) + a 0.12 additive glow;
+  lake painting (0.25,0.31,0.43) vs dome (0.36,0.48,0.66). Fix: coast
+  sky_horizon → (0.57,0.72,0.87), lake → (0.28,0.38,0.55) in vista.gd DEFS;
+  vista_sky glow band 0.12 → 0.05, sun sector 0.20 → 0.15; vista_card gains
+  a side-edge melt (u near 0/1 → edge_color over 0.08) mirroring its top melt.
+- Gates: import 0 SCRIPT ERRORs; 14/14 suites PASS; budget SUITPERF
+  84 draw calls / 3 lights (unchanged — shader-only). Room capture
+  shot-r2-room matches the North Star composition; sky through the opening
+  now deepens like the reference painting instead of washing pale.
+- CONCURRENT EDIT NOTICED: app/lab.gd changed at 11:26 ET mid-round (not by
+  this round — Jon's "hero on both pads, heroine parked" instruction). Left
+  untouched and OUT of this round's commit; its owner should commit it.
+- NEXT round picks P3 (VistaSpill follows vista/grade swaps).
 
 Checkpoint file per Jon's standing order (Claude limit protocol). Start
 here after any interruption; then check git status/diff.
+
+## CURRENT STATE (2026-11-24 17:37 ET) — v2.0 APK EXPORTED, all gates pass
+- `builds/AtlasHolodeck-v2.apk` — 89,978,158 bytes. Gates: `--xr_mode_openxr`
+  ✓, libopenxr_loader.so ✓, package com.jondude.holodeck ✓, RECORD_AUDIO ✓,
+  apksigner ✓, signer SHA-256 d38ad98976d4df388a6d84faea908e26b604901c85771a
+  692b7d5df76219e6e7 (matches installed builds). APKs gitignored, never
+  committed. Awaiting Jon's on-device smoke test.
+- Remote head `b109c621` (vista feel round); tree clean apart from runtime
+  scratch (builds/logs/, __pycache__).
+- Landed 2026-11-24 after the Round 6 notes below: Star Destroyer demo
+  bundle + swap load-order fix; Antigravity polish + tone-lift (full gate
+  green: 14/14 suites, exercise PASS, EX PERF resting 57, lights 3);
+  harness fixes (interaction_test model-agnostic; exercise PERF samples
+  3.6 s after panel dismiss); vista feel round (locked horizon, stepped
+  haze, fog = painted horizon colour, one sun per vista, three-rate
+  motion; coast painting NOT regenerated). Jon on the feel captures:
+  "Much better."
+- Open/blocked: R7-5 suits (TRELLIS.2 ZeroGPU quota — retry after reset);
+  R7-1 TV panel (needs Jon's Jellyfin address + vault API key); Jon's v2
+  headset checks (vista feel in stereo, hum, orb, arm, frame rate, hub
+  LAN check-in, Tailscale path). Pi DOWN (Jon fixing 2026-11-25) — SSH
+  routes via the Pi jump are dead; hub HTTP API via :3130 proxy works.
+- Process lessons: agy headless needs --dangerously-skip-permissions;
+  mock hub MUST launch with --assets AND --edit-assets; captures windowed
+  under xvfb via tools/shot.gd only; VERIFY scheduled jobs by their run
+  records — one was silently skipped by safety review on 2026-11-24.
+
+## History (pre-17:37 state, for reference)
+
+## ROUND 6 — ROOM REBUILD TO THE PICTURE (Jon 2026-11-24 09:54 ET, in progress)
+Jon: "Take what I have now, extract the table and redo the garage to look like the
+picture" (design/v2-vision-walkin.png) + wall readouts must become MOVABLE widgets he
+can switch between readouts and PICTURES (R6-2, next) + Quest 2 budgets stay law.
+The TABLE is untouched (his design). DONE so far:
+- presence.gd NEW: the Atlas point-sphere extracted from data_station.gd (orb only;
+  celebrate/set_fade kept). Lab places it LEFT at (-2.45, 0, 0.8). DataStation is out
+  of the scene (file remains, unused); cad_bench.bind_presence() + overview_lines()
+  getter feed the coming wall widgets; bench celebrate -> Presence.
+- lab.gd: clutter DELETED (shelves, greebles, ceiling rig, screen bank, cables, floor
+  trim, light shafts, workbench dressing). _bench_slabs() = bare dark slabs on both
+  side walls (top 0.9475); props (lamp/crates) on the right slab; arm at the right
+  slab's far end (3.5, 0.9475, -4.0); _suit_platforms() flanking the FAR opening at
+  (±2.95, -4.15); _ceiling_bars() = 3 slim WHITE HDR bars (the picture's lighting).
+  _seal() skips empty fx/screens builders. Dead dressing functions deleted.
+- room.gd: opening MOVED to the back wall (OPEN_X0/X1 ±2.9, OPEN_TOP 2.9, TERRACE_Z
+  -8.3): _build_opening() + _wall_segment_back() (3 segments, one shared material),
+  full left wall restored, right wall texture now PLAIN (shelf silhouettes removed),
+  terrace + railing rebuilt along z=-8.15. Wall strips on the back wall removed.
+- vista.gd: deck rotated -90° in main.gd (faces the back opening now); coast card_top
+  12.9->15.5, lake 12.2->14.5 (close the sky gap at the opening's top corners).
+- hud.gd: StatusStrip raised (STRIP_POS y 2.32 — it was the "grey slab" silhouetted
+  against the vista at centre view; bisected via captures dbg-*), arcs pushed out
+  (ARC_X 2.35), smaller (1.35), dimmer (0.4).
+- rig.gd AREAS/BLOCKS/PADS + prop.gd supports re-derived for the new layout.
+  RIG_TEST rewritten for the new geometry (table block, side wall, pad flank guard,
+  doorway->terrace, head-pivot turn) — PASS. panel/interaction/explode/props PASS.
+- DEFAULT VIEW: spawn framing faces the opening (captures r6-* from the entrance end).
+VERIFIED captures: r6-picture/r6-terrace/r6-lake/r6-wide (2nd pass in flight).
+STILL TO DO: R6-2 wall widgets (movable, content types incl. pictures, persistence);
+solidify test fix (lift-first drag — plane drag clamps to the inset BY DESIGN, LIFT_OFF
+0.10 m; test now lifts to 1.8 before carrying; null guards added) — re-run pending;
+commit R6 + props + solidify chunks; v2.0 export after R4-3/R4-4/R4-7.
+
 
 ## ROUND 5 (BRIEF-round5.md) — CHUNK A BUILT + VERIFIED 2026-11-24 (Helios)
 Jon rejected the enclosed Gemini garages; direction = ONE OPEN WALL to a living vista like
@@ -292,3 +525,60 @@ models measure 59-63 idle / 85-89 panel-active. Parked many-part models still co
   machine. Token lives in gitignored app/hub_secret.cfg, baked at export
   via the preset include_filter — never commit it (check git status for
   hub_secret before every commit).
+
+## 2026-11-24 late morning — R7-3 + Jon fixes + R7-4 (Helios)
+- R7-3 bench tools DONE: tape measure (panel MEASURE + trigger pins, AABB-face approximation, house-format readout), section view (clip_y in both shared holo shaders via Fx.set_section), 15° snap ticks in grabbable plane turns, RefBoard (Prop; BOARD button; double-grab flips picture). tools_test 17/17. Panel funded by parts-scroll trim (content 799/800).
+- Jon fixes (same morning): opening frame REMOVED (jambs/head/light-lines out, flush threshold stays; the "inner rectangle" was the frame's inner face); suit pads moved (±2.95,-4.15) -> (±2.5,-4.3) — they overlapped the bench slabs (3.53 > 3.2); rig pad guard 0.82 -> 0.68 (was eating doorway lanes; rig_test lanes recalibrated to the real corridor x=1.62); gulls/boat pushed to the far sky (bases x -47..-56, orbit r 6-12, boat x -52.5 slower).
+- R7-4 (minus suits): orb drift_visit on job land (presence.gd; bench calls it beside celebrate); tabletop tap = knock (new tap.wav) + hot_pulse ring in grid shader (hot_point/hot_pulse uniforms), hand-tracked downward crossing only; props knock on set-down. responds_test PASS. Suits visor/wake moves to R7-5.
+- Pushes: R7-2 remote 785d80a5; R7-3 remote 4666bffc. Still outstanding: library_test success-path re-run for the hub probe race (background run never produced a verdict under load).
+
+## 2026-11-24 midday — R7-6 living vista + demo swap (Helios)
+- R7-6 (Jon: balcony INTO the scene, look down at cliffs/water, backdrop must MOVE): terrace extended (TERRACE_Z -8.3 -> -8.8, railing -8.65, rig terrace area -8.55) so the balcony reaches into the vista; NEW headland per vista (vista.gd _headland_mesh): noise-displaced cliff skirt tucked under the terrace (local x -6.9) dropping to the sea (coast water_y -1.6 -> -4.2, drop 9.5; lake -3.0/7.0; valley slope 8.5, grass tint), photographic basalt texture (design/textures/cliff-rock.png), ledge quantization + wet darkening vertex colours, grades tint it via _rocks. Foam collar at the waterline (drift shader, streaky procedural foam tex, scrolls ashore). Water: subdivided plane + vertex swell + shore wash bands + jitter octave + near-calm sparkle. Profile lesson: pow 0.55 plumb drop hid under the railing; pow 1.15 apron reads from above. Terrace fascia box added (room.gd) — without it, sightlines under the paper-thin terrace lip showed the headland's raw top row as "teeth" in entrance captures.
+- TAILSCALE PROBE RACE **VERIFIED** 2026-11-24: library_test PASS 10/10 against the mock hub (the earlier background FAIL was a harness error: mock_hub --assets pointed at cad-jobs/ root instead of a job folder, so no hub ever started — the probe correctly reported unreachable).
+- DEMO SWAP (Jon): main.gd _bundled_demo_swap() — if res://demo/stardestroyer.glb + .json exist at boot, a CadModel takes the stage and the bracket retires hidden; machinery verified with a stand-in GLB (5 suites PASS incl. model-agnostic tools_test aims). **The real GLB is NOT yet bundled**: it lives in the hub job folder on Obelisk (edce928564) and the tailnet proxy from this VM is DOWN (proxy closed during CONNECT, since ~08:57); paramiko also had to be reinstalled into ~/workspace/tooling/ssh-venv (use that python for obelisk.py). When the proxy returns: fetch model.glb + manifest.json from ~/.local/share/atlas/cad-jobs/edce928564/ on Obelisk into app/demo/, set the manifest name to "Victory-class Star Destroyer", re-run the gate + a capture, commit.
+
+## 2026-11-24 midday 2 — R7-6b moving backdrop + R4-3 tether merge (Helios)
+- R7-6b (Jon: "that weird plane right after the balcony — take it away; get a background like a gif looping endlessly, cliffside with the ocean rolling beneath"): the flat procedural water is GONE. The sea is now a photographic ocean texture (design/textures/ocean-surface.png) scrolled at two scales/directions in vista_water.gdshader (swell + glitter + ashore wash kept as overlays). The far painting itself now lives: vista_card.gdshader breathes the painting's SEA BAND (slow UV swell + faint foam streaks, TIME-looped, endless) — per-vista "sea" band in DEFS, in TOP-ORIGIN shader UV (v=0 at the image top — the first attempt used bottom-origin values and painted wavy contour lines across the sky; fixed, verified clean in shot-pic13). Grades tint the card via the shader's tint param (_cards now holds ShaderMaterials). Headland + foam collar stay (the cliff beneath the balcony).
+- R4-3 tether merge DONE: model.gd leader lines were 1 MeshInstance per part (27 draw calls exploded) — now ONE merged ArrayMesh rebuilt in _update_tethers Pass 3 (thin oriented boxes, outward-wound); per-part line visibility (park/unpark/_set_state) maps to the mesh's visible flag; pin styling maps to a _line_hidden set consulted at rebuild. LABELS_TEST PASS (27 labels, no overlaps), explode/interaction/panel suites PASS, import clean.
+- ANTIGRAVITY CLI (Jon's order, main thread of this chat): installed from Google's official installer (reviewed first) — ~/.local/bin/agy v1.5.16; --print/--mode/--model flags all present. NOT yet signed in: first run prints a Google OAuth URL + waits ~60 s for a pasted code — do it live with Jon (the URL is single-shot).
+- R4-4 DONE 2026-11-24 (label textures): park() now blanks every tether + dim label text (an empty Label3D holds no texture) and unpark() restores them (captions recomputed; dim texts kept in _dim_texts; a pinned part's two-line label re-asserted via _style_part). Parked bench models — up to 4 × 27 labels — no longer carry texture memory. New proof tools/park_labels_test.gd PASS 6/6; labels/explode/interaction suites PASS.
+- ANTIGRAVITY first sign-in attempt FAILED at token exchange (invalid_grant): the auth URL had been hand-rebuilt from a wrapped 80-col TUI. Fix that worked: run agy under `script -qefc "sh -c 'stty cols 400 rows 60; exec ~/.local/bin/agy'"` so the URL prints (nearly) unwrapped and can be copied byte-exact. Second attempt in flight 2026-11-24 11:33 ET.
+- ANTIGRAVITY SIGNED IN 2026-11-24 11:41 ET: TUI confirms dmj1621@gmail.com (Google AI Pro), Gemini 4 Neon (High); data-collection opt-in left OFF; workspace /home/hatch trusted; `agy -p` verified ("ready"). Token at ~/.gemini/antigravity-cli/antigravity-oauth-token.
+- R8 LOOK WORKFLOW (Jon, 2026-11-24): Gemini leads look & feel/UI polish ("It does UI and UX better than you and Claude") — presentation only, function frozen. Governing reference: design/look-reference-jon-20261124.jpg. gemini_image.py gained --ref (image conditioning). First target: design/polish-targets/target-entrance-01.png (Gemini restyle of shot-pic13 from the reference) — deltas to build: much darker polished room + glossy floor reflections, framed teal data panels (waveforms/gauges) on both walls, larger denser orb at the left station, dark slab table with fine grid + floating ring under the part, chamfered opening corners, suits on ring pads (assets still TRELLIS-quota-blocked), slim dim ceiling bars, subtle floating rings over the table's far end (from Jon's reference — they return as environment, chrome toggle still governs UI clutter).
+
+## ROUND A — HERO HOLOGRAM PRESENCE (2026-11-25)
+- cad_model.gd DISPLAY_FIT_M 0.82 → 0.96. Tried 1.4 first: the destroyer's long
+  axis lies across the table's DEPTH (its 5.54 in maps to model Z), so at 1.4 the
+  volume measured 1.40 m in Z vs the 1.22 m slab / 1.0 m inset — overhang front
+  and back (demo_probe AABB). At 0.96: displayed (0.571 × 0.345 × 0.961) m,
+  inside the inset with margin; dims readouts unchanged (3.3 × 5.54 × 1.99 IN —
+  dims divide by display_scale). NEXT-ROUND OPTION (needs a Jon/parent call):
+  yaw the demo 90° in the swap so its length runs along the table's 2.2 m axis —
+  that would make a ~1.4 m fit clean.
+- Hero rings (new app/hero_ring.gd + cad_model._build_hero_rings): two TorusMesh
+  rings as model children sharing Fx.mesh_part_material() (instance params pin
+  the resolved state; the section clip applies to them too). RingUnder: R =
+  0.62 × footprint bounding radius, flat, 5 mm over the model's base plane,
+  wire-alpha 0.60, yaw +5°/s. RingOrbit: R = 1.18 × bounding radius, tilt 18°
+  about X, pivot raised so its low arc clears the base plane, wire-alpha 0.42,
+  yaw −3.5°/s. Rotation lives on the pivots because grabbable toggles
+  set_process on the model root. Visibility rides _set_state/park/unpark
+  overrides: shown when materialized, hidden when parked, follow grab, scale
+  and solidify as children. Cost: +2 draw calls; lights still 3.
+- Verification: import 0 SCRIPT ERRORs; suites panel/tools/interaction/labels/
+  explode/solidify/wall_widgets ALL PASS. solidify needed a clean standalone
+  re-run (PASS in ~10 s): under parallel cron contention it starved once and
+  false-exited once — environment flake, not a regression. Captures:
+  ra-base1/2 (before), ra-try140 (1.4 diagnostic), ra-hero1/2 (after),
+  demo_probe AABB-verified at both fits.
+- Residuals: from the entrance the ship still washes pale against the bright
+  vista (fresnel volume vs bright backdrop — a shader/exposure matter for a
+  later round); shot.gd snaps ~2 frames after boot-skip, so entrance stills
+  catch the demo mid-materialize — judge the ship from ra-hero2 and the probe
+  capture, the rings from either.
+- PUSH STATUS (2026-11-25 11:35 ET): commit d0957cf is LOCAL ONLY. Two
+  push_api.py attempts this round did not land (remote head still b109c621;
+  the script re-uploads all 418 blobs / 163 MB every run at ~0.1-0.3 MB/s
+  through the proxy and the first attempt exited silently mid-transfer).
+  Re-run `python3 push_api.py` when the network is idle; expect 15-45 min.
+  NOTE: a447f8e (Iteration A) is also ahead of remote — one push syncs all.

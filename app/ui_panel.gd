@@ -105,6 +105,44 @@ func _build_ui() -> void:
 	slider.add_theme_stylebox_override("grabber_area_highlight", _flat(Tokens.HOLO_LINE, Color(0, 0, 0, 0), 0))
 	slider.value_changed.connect(func(v: float) -> void: _model.set_explode(v))   # follows set_model()
 	slider.drag_ended.connect(func(_changed: bool) -> void: Sfx.play(self, "explode"))
+	# R7-3 tools row: MEASURE (tape) + SECTION (clip plane) + BOARD (reference picture)
+	var tools := HBoxContainer.new()
+	tools.add_theme_constant_override("separation", 10)
+	var measure_btn := _action_button("MEASURE", Vector2(118, 40), 22)
+	measure_btn.toggle_mode = true
+	measure_btn.toggled.connect(func(on: bool) -> void:
+		var b := get_tree().get_first_node_in_group("cad_bench")
+		if b:
+			b.set_measure(on)
+		poke())
+	tools.add_child(measure_btn)
+	var sec_label := Label.new()
+	sec_label.text = "SECTION"
+	sec_label.add_theme_font_override("font", load(Tokens.FONT_REGULAR))
+	sec_label.add_theme_font_size_override("font_size", 22)
+	sec_label.add_theme_color_override("font_color", Tokens.HOLO_LINE)
+	tools.add_child(sec_label)
+	var sec := HSlider.new()
+	sec.min_value = 0.0
+	sec.max_value = 1.0
+	sec.step = 0.01
+	sec.custom_minimum_size = Vector2(0, 40)
+	sec.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sec.value_changed.connect(func(v: float) -> void:
+		var b := get_tree().get_first_node_in_group("cad_bench")
+		if b:
+			b.set_section(v))
+	tools.add_child(sec)
+	var board_btn := _action_button("BOARD", Vector2(104, 40), 22)
+	board_btn.toggle_mode = true
+	board_btn.toggled.connect(func(on: bool) -> void:
+		var b := get_tree().get_first_node_in_group("cad_bench")
+		if b:
+			var now: bool = b.toggle_board()
+			board_btn.set_pressed_no_signal(now)
+		poke())
+	tools.add_child(board_btn)
+	box.add_child(tools)
 	slider.value_changed.connect(_on_slider)
 	box.add_child(slider)
 	_slider = slider
@@ -139,8 +177,8 @@ func _build_ui() -> void:
 	box.add_child(_build_voice_row())
 
 	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 16)
-	var reset_model := _action_button("RESET MODEL", Vector2(0, 60), 30)   # model back to table centre (cad_bench)
+	bottom.add_theme_constant_override("separation", 10)
+	var reset_model := _action_button("RESET MODEL", Vector2(0, 60), 21)   # model back to table centre (cad_bench)
 	reset_model.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	reset_model.pressed.connect(func() -> void:
 		var bench := get_tree().get_first_node_in_group("cad_bench")
@@ -149,16 +187,22 @@ func _build_ui() -> void:
 		else:
 			_model.reset_pose())
 	bottom.add_child(reset_model)
-	var fix_floor := _action_button("FIX FLOOR HEIGHT", Vector2(0, 60), 30)  # was RESET FLOOR: moves YOUR height, not the model
+	var fix_floor := _action_button("FIX FLOOR HEIGHT", Vector2(0, 60), 21)  # was RESET FLOOR: moves YOUR height, not the model
 	fix_floor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fix_floor.pressed.connect(XrBoot.reset_floor.bind("panel"))
 	bottom.add_child(fix_floor)
-	_vista_button = _action_button("VIEW: COAST", Vector2(0, 60), 24)   # Round 5: cycle the world outside the open wall
+	_vista_button = _action_button("VIEW: COAST", Vector2(0, 60), 21)   # Round 5: cycle the world outside the open wall
 	_vista_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_vista_button.pressed.connect(func() -> void:
 		if _vista:
 			_vista.cycle())
 	bottom.add_child(_vista_button)
+	_grade_button = _action_button("LIGHT: DAY", Vector2(0, 60), 21)   # R7-2: day / golden / dusk grade for the current vista
+	_grade_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grade_button.pressed.connect(func() -> void:
+		if _vista:
+			_vista.cycle_grade())
+	bottom.add_child(_grade_button)
 	box.add_child(bottom)
 
 	var send := _action_button("SEND TO PRINTER", Vector2(0, 60), 30)   # opens the confirmation card; never prints by itself
@@ -250,7 +294,7 @@ func _build_parts_block() -> Control:
 	_parts_scroll = ScrollContainer.new()
 	_parts_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_parts_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
-	_parts_scroll.custom_minimum_size = Vector2(0, PART_ROWS * (PART_ROW_H + 4) - 4)
+	_parts_scroll.custom_minimum_size = Vector2(0, 128)   # trimmed in R7-3 to fund the tools row
 	_parts_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(_parts_scroll)
 	_parts_list = VBoxContainer.new()
@@ -260,7 +304,7 @@ func _build_parts_block() -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	for dir in [-1, 1]:
-		var sb := _action_button("▲" if dir < 0 else "▼", Vector2(64, (PART_ROWS * (PART_ROW_H + 4) - 12) / 2), 28)
+		var sb := _action_button("▲" if dir < 0 else "▼", Vector2(64, 64), 28)
 		sb.add_theme_stylebox_override("normal", StyleBoxEmpty.new())   # text-only at rest: one 2D draw instead of two
 		sb.pressed.connect(scroll_parts.bind(dir))
 		col.add_child(sb)
@@ -525,12 +569,17 @@ func _build_print_card() -> void:
 
 var _vista: VistaDeck
 var _vista_button: Button
+var _grade_button: Button
 
 func bind_vista(v: VistaDeck) -> void:
 	_vista = v
 	_vista_button.text = "VIEW: %s" % v.current().to_upper()
+	_grade_button.text = "LIGHT: %s" % v.grade().to_upper()
 	v.vista_changed.connect(func(nm: String) -> void:
 		_vista_button.text = "VIEW: %s" % nm.to_upper()
+		poke())
+	v.grade_changed.connect(func(nm: String) -> void:
+		_grade_button.text = "LIGHT: %s" % nm.to_upper()
 		poke())
 
 func bind_print(pf: PrintFlow) -> void:
@@ -540,6 +589,8 @@ func bind_print(pf: PrintFlow) -> void:
 func _on_print_state(s: int) -> void:
 	poke(3.0)
 	_card.visible = s != PrintFlow.S.IDLE
+	if _card.visible:
+		get_tree().call_group("holodeck_main", "show_chrome")
 	_card_confirm.visible = s == PrintFlow.S.CONFIRMING or s == PrintFlow.S.SUBMITTING
 	_card_confirm.disabled = s == PrintFlow.S.SUBMITTING
 	_card_cancel.text = "CANCEL" if s == PrintFlow.S.CONFIRMING else "DISMISS"
@@ -731,6 +782,7 @@ func request_library_delete(entry: Dictionary) -> void:
 	_lib_confirm.visible = true
 	_lib_cancel.text = "CANCEL"
 	_lib_card.visible = true
+	get_tree().call_group("holodeck_main", "show_chrome")
 
 func cancel_library_delete() -> void:
 	poke()

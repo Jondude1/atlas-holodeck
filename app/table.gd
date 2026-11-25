@@ -23,16 +23,17 @@ const SETTLE_HALF := Vector2(1.12, 0.61)
 const READOUT_Z := 0.68    # floating readouts hover just past the player-facing edge
 const READOUT_Y := 1.12
 
-const EDGE_ENERGY := 2.1
-const CHANNEL_ENERGY := 4.0
-const BEVEL_ENERGY := 0.75
-const ETCH_ALPHA := 0.5     # end-zone etchings brighter (brief #12; was 0.26)
-const BEZEL_ENERGY := 1.4
-const LIGHT_ENERGY := 2.6
-const FILL_ENERGY := 0.7
-const RIM_ENERGY := 1.2
+const EDGE_ENERGY := 1.15
+const CHANNEL_ENERGY := 1.45
+const BEVEL_ENERGY := 0.45
+const ETCH_ALPHA := 0.34     # R8 polish: cleaner inset, hologram leads
+const BEZEL_ENERGY := 0.95
+const LIGHT_ENERGY := 1.85
+const FILL_ENERGY := 0.55
+const RIM_ENERGY := 1.35
 
 var inset_mat: ShaderMaterial   # grid shader on the display inset (main.gd drives its fade)
+var _pulse_t := 1.0               # R7-4: tabletop tap pulse, 0..1 (1 = spent)
 var _ti_mat: StandardMaterial3D
 var _apron_mat: StandardMaterial3D
 var _strip_mat: ShaderMaterial
@@ -49,6 +50,7 @@ var _motes: GPUParticles3D
 var _labels := {}
 
 func _ready() -> void:
+	add_to_group("holo_table")
 	_build_body()
 	_build_inset()
 	_build_light()
@@ -98,7 +100,7 @@ func _merged(parent: Node, nm: String, mb: MeshBuilder, mat: Material) -> MeshIn
 	return mi
 
 func _build_body() -> void:
-	_ti_mat = Fx.titanium(Tokens.TITANIUM)
+	_ti_mat = Fx.titanium(Tokens.TITANIUM_BODY)
 	_apron_mat = Fx.titanium(Tokens.TITANIUM_DARK)
 	_strip_mat = Fx.pulse_material(Tokens.HOLO_LINE, EDGE_ENERGY, Vector3.RIGHT, SLAB_BODY_HALF_X * 2.0)   # pulse travels the edge
 	_trim_mat = Fx.titanium(Tokens.TITANIUM)
@@ -174,25 +176,28 @@ func _build_body() -> void:
 func _build_light() -> void:
 	_light = OmniLight3D.new()
 	_light.name = "TableGlow"
-	_light.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.62)   # v2 look pass: ice-white rig light, not cyan wash
-	_light.omni_range = 5.0
-	_light.position = Vector3(0, 1.3, 0.3)
+	_light.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.84)   # R8 tone-lift: neutral-ice key reaching charcoal walls
+	_light.omni_range = 9.0
+	_light.light_specular = 0.15
+	_light.position = Vector3(0, 1.35, 0.3)
 	add_child(_light)
-	# one dim fill on the player side so the slab edge, apron and legs read against the room
+	# one soft fill on the player side so the slab edge, apron and floor read evenly without a specular streak
 	_fill = OmniLight3D.new()
 	_fill.name = "PlayerFill"
-	_fill.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.62)
-	_fill.omni_range = 4.0
+	_fill.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.86)
+	_fill.omni_range = 7.5
+	_fill.light_specular = 0.05
 	_fill.shadow_enabled = false
-	_fill.position = Vector3(0, 0.75, 1.1)
+	_fill.position = Vector3(0, 1.35, 1.25)
 	add_child(_fill)
-	# rim: high behind the far edge, so slab top edges and legs catch a highlight from the player's view
+	# rim: high behind the far edge, neutral daylight bounce from the opening onto walls, ceiling and suit bays
 	_rim = OmniLight3D.new()
 	_rim.name = "RimLight"
-	_rim.light_color = Tokens.HOLO_PRIMARY.lerp(Color(1, 1, 1), 0.62)
-	_rim.omni_range = 6.0
+	_rim.light_color = Color(0.90, 0.94, 0.98)
+	_rim.omni_range = 10.0
+	_rim.light_specular = 0.14
 	_rim.shadow_enabled = false
-	_rim.position = Vector3(0, 1.9, -1.1)
+	_rim.position = Vector3(0, 2.35, -1.8)
 	add_child(_rim)
 
 func _build_inset() -> void:
@@ -201,8 +206,8 @@ func _build_inset() -> void:
 	var mi := MeshInstance3D.new()
 	mi.name = "DisplayInset"
 	mi.mesh = plane
-	inset_mat = Fx.grid_material(Tokens.TABLE_SURFACE, Tokens.GRID_MINOR_STEP, Tokens.GRID_MAJOR_STEP)
-	inset_mat.set_shader_parameter("hot_center", 0.25)  # v2 look pass: a gentle pool, not a floodlight (was 0.6)
+	inset_mat = Fx.grid_material(Tokens.ROOM_BG.lerp(Tokens.TABLE_SURFACE, 0.58), Tokens.GRID_MINOR_STEP, Tokens.GRID_MAJOR_STEP)
+	inset_mat.set_shader_parameter("hot_center", 0.18)  # subtle work pool under the hero hologram (no white center glare)
 	inset_mat.set_shader_parameter("hot_radius", 0.85)
 	mi.material_override = inset_mat
 	mi.position.y = TOP_Y
@@ -327,13 +332,34 @@ func _update_glow(delta: float) -> void:
 		var sc: float = _glow_follow.global_transform.basis.get_scale().x
 		var r := maxf(maxf(b.size.x, b.size.z) * 0.5 * sc, 0.09) + 0.05
 		_glow_group.scale = Vector3(r * 2.0, 1.0, r * 2.0)
-	_pool_mat.albedo_color = Tokens.a(Tokens.HOLO_PRIMARY, 0.34 * _glow_alpha)
+	_pool_mat.albedo_color = Tokens.a(Tokens.HOLO_PRIMARY, 0.14 * _glow_alpha)
 	_col_mat.set_shader_parameter("fade", _glow_alpha)
 	_glow_motes.emitting = _glow_alpha > 0.4
+
+## R7-4: a hand tapping the tabletop gets an answer — a knock and a ring of
+## light from the tap point. prev/now are world hand positions across one frame;
+## only a DOWNWARD crossing of the surface band counts (no hover false-fires).
+func tap_at(prev: Vector3, now: Vector3) -> bool:
+	var lp := to_local(now)
+	var pp := to_local(prev)
+	if absf(lp.x) > 1.22 or absf(lp.z) > 0.61:
+		return false
+	if lp.y < TOP_Y - 0.01 or lp.y > TOP_Y + 0.055 or pp.y <= TOP_Y + 0.055:
+		return false
+	_pulse_t = 0.0
+	if inset_mat:
+		inset_mat.set_shader_parameter("hot_point", Vector2(lp.x, lp.z))
+	Sfx.play(self, "tap")
+	return true
 
 func _process(delta: float) -> void:
 	_ring_pivot.rotate_y(deg_to_rad(RING_DEG_PER_SEC) * delta)
 	_update_glow(delta)
+	if _pulse_t < 1.0:
+		_pulse_t = minf(_pulse_t + delta / 0.6, 1.0)
+		if inset_mat:
+			var k := 1.0 - _pulse_t
+			inset_mat.set_shader_parameter("hot_pulse", k * k * 0.9)
 
 ## The 3-light rig, for the vista system's per-vista mood tints (Round 5).
 func mood_lights() -> Array:

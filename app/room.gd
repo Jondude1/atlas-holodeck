@@ -14,14 +14,26 @@ const Z_BACK := -5.0
 const Z_FRONT := 3.0
 const HEIGHT := 3.4
 # Round 5 — the open wall (left, -X): a hangar opening onto the terrace and the vista.
-const OPEN_Z0 := -4.2                  # opening span along the left wall
-const OPEN_Z1 := 1.8
+const OPEN_X0 := -2.9                  # Round 6: the opening spans the BACK wall (the picture)
+const OPEN_X1 := 2.9
 const OPEN_TOP := 2.9                  # opening head height (header above)
-const TERRACE_X := -7.3                # terrace floor outer edge
+const TERRACE_Z := -8.8                # terrace floor outer edge, beyond the back wall
+const TEX_WALL: Texture2D = preload("res://textures/wall-concrete.png")   # R7-0: photographic surfaces read real; flat tints read CG
+const TEX_FLOOR: Texture2D = preload("res://textures/floor-stone.png")
+var _wall_mat_cache: StandardMaterial3D = null
+
+## One shared LIT concrete material for every wall — walls now sit in the room's
+## lighting instead of glowing flat like the old unshaded procedural panels.
+func _wall_mat() -> StandardMaterial3D:
+	if _wall_mat_cache == null:
+		_wall_mat_cache = _lit(Color(1.05, 1.08, 1.12), 0.04, 0.84, TEX_WALL)   # R8 tone-lift: let dark TEX_WALL read as charcoal concrete
+		_wall_mat_cache.uv1_scale = Vector3(2.5, 1.0, 1.0)
+		_wall_mat_cache.texture_repeat = true
+	return _wall_mat_cache
 const PPM := 128               # wall texture pixels per metre
-const STRIP_ENERGY := 0.8    # v2 look pass: accent lines whisper (was 1.3)
-const COVE_ENERGY := 0.85   # v2 look pass (was 1.4)
-const POOL_ALPHA := 0.35    # v2 look pass (was 0.55)
+const STRIP_ENERGY := 0.38    # v2 look pass: accent lines whisper (was 1.3)
+const COVE_ENERGY := 0.45   # v2 look pass (was 1.4)
+const POOL_ALPHA := 0.18    # R8 polish: subtle table bounce on floor, no blue wash
 const SHADOW_ALPHA := 0.85
 const HALO_ALPHA := 0.12    # v2 look pass (was 0.22)
 
@@ -48,8 +60,12 @@ func build(table_xz: Vector2) -> void:
 	_build_dust()
 	set_fade(1.0)
 
-func station() -> DataStation:
-	return _lab.station() if _lab else null
+func presence() -> Presence:
+	return _lab.presence() if _lab else null
+
+## Round 3 (P3): the Lab's VistaSpill material, for VistaDeck to re-tint.
+func spill_material() -> StandardMaterial3D:
+	return _lab.spill_material() if _lab else null
 
 func set_fade(v: float) -> void:
 	_fade = v
@@ -124,10 +140,12 @@ func _box(size: Vector3) -> BoxMesh:
 func _build_floor(table_xz: Vector2) -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(HALF_X * 2.0, Z_FRONT - Z_BACK)
-	# the texture carries the tone (dark blue-rich plate, seams + scuffs); the tint stays near white so the two don't
-	# multiply into black (brief #12: darker and richer than #8, never black)
-	var mat := _lit(Color(0.5, 0.58, 0.68), 0.25, 0.5, _floor_texture())   # v2 look pass: satin dark floor (metallic down, roughness up)           # glossy: the rig and table light streak across it
-	mat.uv1_scale = Vector3(HALF_X * 2.0, Z_FRONT - Z_BACK, 1.0)
+	# R8 tone-lift: readable satin-polished charcoal stone floor; uv1_offset shifts the vertical tile seam
+	# off x = 0 and higher roughness softens specular into an even floor sheen.
+	var mat := _lit(Color(0.90, 0.93, 0.96), 0.06, 0.46, TEX_FLOOR)
+	mat.uv1_scale = Vector3(3.0, 3.0, 1.0)
+	mat.uv1_offset = Vector3(0.09, 0.0, 0.0)
+	mat.texture_repeat = true
 	_mesh("Floor", plane, mat, Vector3(0, 0, (Z_FRONT + Z_BACK) * 0.5))
 
 	# soft glow pool spilling past the slab, then the contact shadow under it
@@ -182,78 +200,101 @@ func _build_walls() -> void:
 	var width := HALF_X * 2.0
 	var size := Vector2(width, HEIGHT)
 	var y := HEIGHT * 0.5
-	# accent strip positions in wall-texture pixels (x), matching the strip boxes placed below
-	var back_px: Array[int] = []
-	for wx in [-1.0, 1.0]:                # the shelving units own the outer bays now
-		back_px.append(int((wx + HALF_X) * PPM))
 	var right_z := -3.2
 	var right_px: Array[int] = [int((right_z - Z_BACK) * PPM)]  # right wall: texture u runs -Z -> +Z
-	_mesh("WallBack", _quad(size), _unshaded_tex(_wall_texture(false, 11, back_px)), Vector3(0, y, Z_BACK))
-	_mesh("WallFront", _quad(size), _unshaded_tex(_wall_texture(false, 23, [])), Vector3(0, y, Z_FRONT), Vector3(0, 180, 0))
+	_mesh("WallFront", _quad(size), _wall_mat(), Vector3(0, y, Z_FRONT), Vector3(0, 180, 0))
 	var side := Vector2(Z_FRONT - Z_BACK, HEIGHT)
-	_mesh("WallRight", _quad(side), _unshaded_tex(_wall_texture(true, 41, right_px)), Vector3(HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, -90, 0))
-	_build_open_wall()
-
-	for wx in [-1.0, 1.0]:                # accent strips: merged into the lab's emissive mesh (STRIP_ENERGY of E_BASE)
-		_lab_strip(Vector3(wx, 1.5, Z_BACK + 0.016), Vector3(0.03, 1.2, 0.03))
+	# R6: plain panels on the right wall too — the shelf silhouettes read as clutter
+	_mesh("WallRight", _quad(side), _wall_mat(), Vector3(HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, -90, 0))
+	_mesh("WallLeft", _quad(side), _wall_mat(), Vector3(-HALF_X, y, (Z_FRONT + Z_BACK) * 0.5), Vector3(0, 90, 0))
+	_build_opening()
 	_lab_strip(Vector3(HALF_X - 0.016, 1.5, right_z), Vector3(0.03, 1.2, 0.03))
 
-## Round 5: the left wall is no longer a wall — two pillars + a header leave a hangar
-## opening (OPEN_Z0..OPEN_Z1, floor to OPEN_TOP) framed in titanium with a cyan light
-## line, opening onto a railed terrace. The segments share the one wall texture/material
-## so the panelling reads continuous; frame, railing and trim merge into the lab's
-## builders (no extra draw calls beyond the segments + the terrace floor).
-func _build_open_wall() -> void:
-	var mat := _unshaded_tex(_wall_texture(true, 37, []))
-	_mesh("WallLeftBack", _wall_segment(Z_BACK, OPEN_Z0, 0.0, HEIGHT), mat, Vector3.ZERO)
-	_mesh("WallLeftFront", _wall_segment(OPEN_Z1, Z_FRONT, 0.0, HEIGHT), mat, Vector3.ZERO)
-	_mesh("WallLeftHeader", _wall_segment(OPEN_Z0, OPEN_Z1, OPEN_TOP, HEIGHT), mat, Vector3.ZERO)
-	var ti := Color(0.32, 0.38, 0.46)
-	var k := STRIP_ENERGY / Lab.E_BASE
-	var line := Color(Tokens.HOLO_LINE.r * k, Tokens.HOLO_LINE.g * k, Tokens.HOLO_LINE.b * k)
-	# machined frame: jambs + head beam + a threshold plate at the floor line
-	_lab.lit.add_box(Vector3(-HALF_X, OPEN_TOP * 0.5, OPEN_Z0), Vector3(0.2, OPEN_TOP, 0.2), ti)
-	_lab.lit.add_box(Vector3(-HALF_X, OPEN_TOP * 0.5, OPEN_Z1), Vector3(0.2, OPEN_TOP, 0.2), ti)
-	_lab.lit.add_box(Vector3(-HALF_X, (OPEN_TOP + HEIGHT) * 0.5, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.2, HEIGHT - OPEN_TOP, OPEN_Z1 - OPEN_Z0 + 0.2), ti)
-	_lab.lit.add_box(Vector3(-HALF_X, 0.012, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.34, 0.024, OPEN_Z1 - OPEN_Z0), ti * 0.8)
-	# the cyan light line tracing the opening's inner edge
-	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z0 + 0.11), Vector3(0.025, OPEN_TOP, 0.025), line * 0.5)
-	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP * 0.5, OPEN_Z1 - 0.11), Vector3(0.025, OPEN_TOP, 0.025), line * 0.5)
-	_lab.emi.add_box(Vector3(-HALF_X + 0.11, OPEN_TOP - 0.02, (OPEN_Z0 + OPEN_Z1) * 0.5), Vector3(0.025, 0.025, OPEN_Z1 - OPEN_Z0 - 0.2), line * 0.5)
-	# terrace floor: the room's plate, extended past the wall line to the railing
-	var tmat := _lit(Color(0.45, 0.52, 0.62), 0.3, 0.5, _floor_texture())
-	tmat.uv1_scale = Vector3(-TERRACE_X - HALF_X, Z_FRONT - Z_BACK, 1.0)
+## Round 6 / R8 polish: the BACK wall carries the opening (OPEN_X0..OPEN_X1, floor to OPEN_TOP)
+## with integrated 45-degree top-corner chamfers built directly into the back-wall mesh (flush
+## concrete with continuous UVs and proper +Z normals, plus subtle dark architectural reveals
+## tucked behind Z_BACK into _lab.lit so the opening reads as solid architecture, not floating panels).
+func _build_opening() -> void:
+	var mat := _wall_mat()
+	var cham_c := 0.44
+	_mesh("WallBack", _build_back_wall_mesh(cham_c), mat, Vector3.ZERO)
+	var ti := Color(0.24, 0.27, 0.31)
+	# Flush threshold plate at the floor transition to the terrace.
+	_lab.lit.add_box(Vector3(0, 0.012, Z_BACK), Vector3(OPEN_X1 - OPEN_X0, 0.024, 0.34), ti * 0.75)
+	# Subtle dark concrete reveal returns tucked behind Z_BACK (-5.0..-5.16) so the cutout
+	# reads as a thick architectural concrete opening from every viewing angle (0 extra draw calls).
+	var rev_col := Color(0.32, 0.34, 0.37)
+	var rev_d := 0.16
+	var rev_z := Z_BACK - rev_d * 0.5 - 0.005
+	var jamb_h := OPEN_TOP - cham_c
+	_lab.lit.add_box(Vector3(OPEN_X0 - 0.02, jamb_h * 0.5, rev_z), Vector3(0.04, jamb_h, rev_d), rev_col)
+	_lab.lit.add_box(Vector3(OPEN_X1 + 0.02, jamb_h * 0.5, rev_z), Vector3(0.04, jamb_h, rev_d), rev_col)
+	_lab.lit.add_box(Vector3(0, OPEN_TOP + 0.02, rev_z), Vector3((OPEN_X1 - OPEN_X0) - cham_c * 2.0, 0.04, rev_d), rev_col)
+	var diag_len := cham_c * sqrt(2.0) + 0.03
+	var off := cham_c * 0.5
+	_lab.lit.add_box(Vector3(OPEN_X0 + off - 0.015, OPEN_TOP - off + 0.015, rev_z),
+			Vector3(diag_len, 0.04, rev_d), rev_col, Basis(Vector3(0, 0, 1), PI / 4.0))
+	_lab.lit.add_box(Vector3(OPEN_X1 - off + 0.015, OPEN_TOP - off + 0.015, rev_z),
+			Vector3(diag_len, 0.04, rev_d), rev_col, Basis(Vector3(0, 0, 1), -PI / 4.0))
+	# terrace floor: neutral stone plate extended past the wall line to the railing
+	var tmat := _lit(Color(1.25, 1.27, 1.28), 0.04, 0.62, TEX_FLOOR)
+	tmat.uv1_scale = Vector3(3.0, 1.2, 1.0)
+	tmat.texture_repeat = true
 	var terrace := PlaneMesh.new()
-	terrace.size = Vector2(-TERRACE_X - HALF_X, Z_FRONT - Z_BACK)
-	_mesh("Terrace", terrace, tmat, Vector3((TERRACE_X - HALF_X) * 0.5, -0.005, (Z_FRONT + Z_BACK) * 0.5))
-	# railing: posts + two rails on the outer edge, top rails closing both ends, a lit lip
-	var rail_x := TERRACE_X + 0.15
+	terrace.size = Vector2(HALF_X * 2.0, Z_BACK - TERRACE_Z)
+	_mesh("Terrace", terrace, tmat, Vector3(0, -0.005, (Z_BACK + TERRACE_Z) * 0.5))
+	# the balcony's fascia: a solid edge under the terrace lip, so sightlines
+	# diving past the edge meet structure, not the headland's raw top row (R7-6)
+	_lab.lit.add_box(Vector3(0, -0.26, TERRACE_Z - 0.03), Vector3(HALF_X * 2.0, 0.52, 0.1), ti * 0.7)
+	# railing across the outer edge + closing rails at both ends, a lit lip on the top rail
+	var rz := TERRACE_Z + 0.15
 	for i in 7:
-		_lab.lit.add_box(Vector3(rail_x, 0.48, -4.9 + i * 1.3), Vector3(0.05, 0.96, 0.05), ti)
-	_lab.lit.add_box(Vector3(rail_x, 0.97, -1.0), Vector3(0.06, 0.05, 8.0), ti)
-	_lab.lit.add_box(Vector3(rail_x, 0.55, -1.0), Vector3(0.04, 0.03, 8.0), ti)
-	for e in [-4.97, 2.97]:
-		_lab.lit.add_box(Vector3((rail_x - HALF_X) * 0.5, 0.97, e), Vector3(-rail_x - HALF_X, 0.05, 0.06), ti)
-		_lab.lit.add_box(Vector3(rail_x, 0.48, e), Vector3(0.05, 0.96, 0.05), ti)
-	_lab.emi.add_box(Vector3(TERRACE_X + 0.02, 0.02, -1.0), Vector3(0.03, 0.015, 8.0), line * 0.7)
+		_lab.lit.add_box(Vector3(-3.9 + i * 1.3, 0.48, rz), Vector3(0.05, 0.96, 0.05), ti)
+	_lab.lit.add_box(Vector3(0, 0.97, rz), Vector3(7.9, 0.05, 0.06), ti)
+	_lab.lit.add_box(Vector3(0, 0.55, rz), Vector3(7.9, 0.03, 0.04), ti)
+	for e in [-3.95, 3.95]:
+		_lab.lit.add_box(Vector3(e, 0.97, (rz + Z_BACK) * 0.5), Vector3(0.06, 0.05, Z_BACK - rz), ti)
+		_lab.lit.add_box(Vector3(e, 0.48, Z_BACK + 0.05), Vector3(0.05, 0.96, 0.05), ti)
+	var k2 := STRIP_ENERGY / Lab.E_BASE
+	var rail_line := Color(Tokens.HOLO_LINE.r * k2, Tokens.HOLO_LINE.g * k2, Tokens.HOLO_LINE.b * k2)
+	_lab.emi.add_box(Vector3(0, 0.97, rz + 0.06), Vector3(7.9, 0.015, 0.02), rail_line * 0.5)
 
-## One piece of the left wall in world space at x = -HALF_X, facing +X, with UVs that
-## continue the full-wall texture (u runs +Z -> -Z, v = 1 at the floor).
-func _wall_segment(za: float, zb: float, y0: float, y1: float) -> ArrayMesh:
-	var ua := (Z_FRONT - za) / (Z_FRONT - Z_BACK)
-	var ub := (Z_FRONT - zb) / (Z_FRONT - Z_BACK)
-	var va := 1.0 - y0 / HEIGHT
-	var vb := 1.0 - y1 / HEIGHT
-	var a := Vector3(-HALF_X, y1, zb)
-	var b := Vector3(-HALF_X, y1, za)
-	var c := Vector3(-HALF_X, y0, za)
-	var d := Vector3(-HALF_X, y0, zb)
+## Single merged back wall at z = Z_BACK facing +Z (clockwise winding when viewed from +Z,
+## explicit +Z normals for lit concrete shading, continuous world-space UVs): left pier, right
+## pier, header, and both 45-degree chamfer corner gussets in one draw call.
+func _build_back_wall_mesh(cham: float) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var add_tri := func(p0: Vector3, p1: Vector3, p2: Vector3) -> void:
+		for p in [p0, p1, p2]:
+			verts.append(p)
+			norms.append(Vector3(0.0, 0.0, 1.0))
+			uvs.append(Vector2((p.x + HALF_X) / (HALF_X * 2.0), 1.0 - p.y / HEIGHT))
+	var add_rect := func(xa: float, xb: float, y0: float, y1: float) -> void:
+		var a := Vector3(xa, y0, Z_BACK)
+		var b := Vector3(xb, y0, Z_BACK)
+		var c := Vector3(xb, y1, Z_BACK)
+		var d := Vector3(xa, y1, Z_BACK)
+		# Clockwise from +Z: bottom-left -> top-right -> bottom-right, and bottom-left -> top-left -> top-right
+		add_tri.call(a, c, b)
+		add_tri.call(a, d, c)
+	add_rect.call(-HALF_X, OPEN_X0, 0.0, HEIGHT)
+	add_rect.call(OPEN_X1, HALF_X, 0.0, HEIGHT)
+	add_rect.call(OPEN_X0, OPEN_X1, OPEN_TOP, HEIGHT)
+	# Top-left chamfer triangle: (OPEN_X0, OPEN_TOP - cham) -> (OPEN_X0, OPEN_TOP) -> (OPEN_X0 + cham, OPEN_TOP)
+	add_tri.call(Vector3(OPEN_X0, OPEN_TOP - cham, Z_BACK),
+			Vector3(OPEN_X0, OPEN_TOP, Z_BACK),
+			Vector3(OPEN_X0 + cham, OPEN_TOP, Z_BACK))
+	# Top-right chamfer triangle: (OPEN_X1 - cham, OPEN_TOP) -> (OPEN_X1, OPEN_TOP) -> (OPEN_X1, OPEN_TOP - cham)
+	add_tri.call(Vector3(OPEN_X1 - cham, OPEN_TOP, Z_BACK),
+			Vector3(OPEN_X1, OPEN_TOP, Z_BACK),
+			Vector3(OPEN_X1, OPEN_TOP - cham, Z_BACK))
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([a, c, b, a, d, c])
-	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([
-		Vector2(ub, vb), Vector2(ua, va), Vector2(ua, vb),
-		Vector2(ub, vb), Vector2(ub, va), Vector2(ua, va)])
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
@@ -354,21 +395,14 @@ func _shelves(img: Image, rng: RandomNumberGenerator, base: Color, w: int, h: in
 # ---------------------------------------------------------------- ceiling
 
 func _build_ceiling() -> void:
-	var ceil_mat := StandardMaterial3D.new()
-	ceil_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_wall_mats.append(ceil_mat)
-	var tex_img := Image.create(4, 4, false, Image.FORMAT_RGBA8)
-	tex_img.fill(Tokens.ROOM_BG.lerp(Tokens.HOLO_DEEP, 0.1))
-	ceil_mat.albedo_texture = ImageTexture.create_from_image(tex_img)
+	# R8 tone-lift: lit charcoal concrete ceiling catches soft ambient falloff (readable, not crushed black)
+	var ceil_mat := _lit(Color(1.05, 1.08, 1.12), 0.10, 0.55, TEX_WALL)
+	ceil_mat.uv1_scale = Vector3(2.0, 2.0, 1.0)
+	ceil_mat.texture_repeat = true
 	_mesh("Ceiling", _quad(Vector2(HALF_X * 2.0, Z_FRONT - Z_BACK)), ceil_mat,
 			Vector3(0, HEIGHT, (Z_FRONT + Z_BACK) * 0.5), Vector3(90, 0, 0))
 	for z in [-4.0, -2.4, -0.8, 0.8, 2.4]:
-		_lab.lit.add_box(Vector3(0, HEIGHT - 0.1, z), Vector3(HALF_X * 2.0, 0.2, 0.24), Tokens.TITANIUM_DARK)
-	# cove: one soft cyan strip where the back wall meets the ceiling, with a halo wash on the wall
-	_lab_strip(Vector3(0, HEIGHT - 0.28, Z_BACK + 0.04), Vector3(HALF_X * 1.85, 0.04, 0.05), COVE_ENERGY)
-	var wash_tex := Fx.radial_texture(128, 1.4)
-	_mesh("CoveHalo", _quad(Vector2(HALF_X * 2.0, 1.1)), _glow(Tokens.HOLO_LINE, wash_tex, HALO_ALPHA),
-			Vector3(0, HEIGHT - 0.55, Z_BACK + 0.01))
+		_lab.lit.add_box(Vector3(0, HEIGHT - 0.1, z), Vector3(HALF_X * 2.0, 0.2, 0.24), Tokens.TITANIUM_BODY)
 
 # ---------------------------------------------------------------- atmosphere
 

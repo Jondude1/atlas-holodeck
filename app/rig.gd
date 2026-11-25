@@ -23,19 +23,17 @@ const TURN_CD := 0.28
 # walkable union (x0, z0, x1, z1), already inset by the body radius
 const AREAS := [
 	[-3.72, -4.72, 3.72, 2.72],        # the room
-	[-4.05, -4.02, -3.6, 1.62],        # the doorway — the ONLY bridge through the wall line
-	[-6.92, -4.72, -4.05, 2.72],       # the terrace (stops short of the wall; see doorway)
+	[-2.65, -5.35, 2.65, -4.6],        # the doorway in the BACK wall — the only bridge out
+	[-3.72, -8.55, 3.72, -4.95],       # the terrace beyond it (railing at -8.65 since the balcony reached further out, R7-6)
 ]
 # obstacle rectangles (x0, z0, x1, z1), expanded by the body radius
 const BLOCKS := [
 	[-1.55, -2.5, 1.55, -0.6],         # the holo table
-	[2.78, -4.72, 3.8, 2.72],          # the right workbench run
-	[-1.7, -4.78, 1.7, -4.05],         # the data station
-	[-3.8, -4.78, -2.55, -4.3],        # back-left shelf unit
-	[2.55, -4.78, 3.8, -4.3],          # back-right shelf unit
+	[3.1, -4.55, 3.85, -0.45],         # the right bench slab
+	[-3.85, -4.55, -3.1, -0.45],       # the left bench slab
 ]
-# obstacle circles (x, z, r): the suit platforms
-const PADS := [[-3.15, -3.35, 0.82], [-3.15, 0.85, 0.82]]
+# obstacle circles (x, z, r): the suit platforms flanking the opening
+const PADS := [[-2.5, -4.3, 0.68], [2.5, -4.3, 0.68]]   # guard = the physical disc (0.64) + margin; 0.82 ate the doorway lanes
 
 var _origin: XROrigin3D
 var _cam: XRCamera3D

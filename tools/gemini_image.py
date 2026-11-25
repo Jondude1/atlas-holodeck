@@ -22,12 +22,23 @@ def main() -> int:
     ap.add_argument("--prompt", default="")
     ap.add_argument("--prompt-file", default="")
     ap.add_argument("--aspect", default="16:9")
+    ap.add_argument("--ref", action="append", default=[],
+                    help="reference image to condition on (repeatable); sent before the text part")
     a = ap.parse_args()
     prompt = a.prompt
     if a.prompt_file:
         prompt = open(a.prompt_file).read().strip()
+    parts = []
+    for ref in a.ref:
+        mime = "image/png" if ref.lower().endswith(".png") else "image/jpeg"
+        if ref.lower().endswith(".webp"):
+            mime = "image/webp"
+        with open(ref, "rb") as f:
+            parts.append({"inline_data": {"mime_type": mime,
+                                          "data": base64.b64encode(f.read()).decode()}})
+    parts.append({"text": prompt})
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"parts": parts}],
         "generationConfig": {"responseModalities": ["IMAGE"],
                              "imageConfig": {"aspectRatio": a.aspect}},
     }

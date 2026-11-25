@@ -9,12 +9,17 @@ const HOME_POS := Vector3(0.0, 0.951, 0.0)  # table centre, on the surface (Holo
 const EXPLODE_DISTANCE := 0.25
 const MATERIALIZE_TIME := 2.0
 const SCHEMATIC_LIFT := 0.002  # metres above the table surface (the model origin)
-const SCAN_PLANE_ALPHA := 0.45
+const SCAN_PLANE_ALPHA := 0.18
 const SCAN_PLANE_MIN := 0.3    # metres: small parts still get a clear sweep
 const TETHER_RISE := 0.13      # metres: label sits this far above its part
 const TETHER_SIDE := 0.1       # ...and this far out to the side, away from the assembly centre
 const TETHER_FAN := 0.085      # R3-10: second callout column, this much further out — halves each column's stack
 const TETHER_MIN_GAP := 0.046  # R3-10: minimum vertical separation between labels sharing a column
+# R4-3: the merged leader-line mesh — unit-box corners (0.0018 x 0.0018 x 1) and outward-wound faces.
+const _TETHER_CORNERS := [
+	Vector3(-.0009, -.0009, -.5), Vector3(.0009, -.0009, -.5), Vector3(.0009, .0009, -.5), Vector3(-.0009, .0009, -.5),
+	Vector3(-.0009, -.0009, .5), Vector3(.0009, -.0009, .5), Vector3(.0009, .0009, .5), Vector3(-.0009, .0009, .5)]
+const _TETHER_IDX := [0, 3, 2, 0, 2, 1, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5]
 const DIM_LABEL_GAP := 0.06    # metres past the footprint edge: just outside the dimension line
 
 signal explode_changed(t: float)
@@ -38,8 +43,11 @@ var _schematic_mat: StandardMaterial3D
 var _scan_plane: MeshInstance3D  # child of the root, NOT a part: not in _parts/_bounds/explode
 var _scan_mat: StandardMaterial3D
 var _dim_labels: Array[Label3D] = []
+var _dim_texts: Array[String] = []  # R4-4: parked models release their label textures (text=""); texts kept here for unpark
 var _tethers: Array[Dictionary] = []  # {part, label, line}: leader line + caps label per part
 var _tether_mat: StandardMaterial3D
+var _tether_mesh: MeshInstance3D   # R4-3: ALL leader lines in ONE merged mesh (was one MeshInstance per part)
+var _line_hidden := {}             # part index -> true: omit that leader from the merged mesh (pin styling)
 var _tether_alpha := 0.0
 
 func _ready() -> void:
@@ -117,9 +125,12 @@ func park(to: Vector3, s := 0.55) -> void:
 	set_tether_alpha(0.0)
 	for l in _dim_labels:
 		l.visible = false
-	for t in _tethers:                 # hidden outright: a transparent label/line still costs a draw call
+		l.text = ""                    # R4-4: an empty Label3D holds no texture — parked models carry none
+	for t in _tethers:                 # hidden outright: a transparent label still costs a draw call
 		t["label"].visible = false
-		t["line"].visible = false
+		t["label"].text = ""
+	if _tether_mesh:
+		_tether_mesh.visible = false
 	_schematic.visible = false
 	_kill_move()
 	var tw := create_tween().set_parallel(true)
@@ -136,11 +147,19 @@ func unpark() -> void:
 		return
 	_parked = false
 	_schematic.visible = true
-	for l in _dim_labels:
-		l.visible = true
-	for t in _tethers:
+	for i in _dim_labels.size():
+		_dim_labels[i].text = _dim_texts[i]   # R4-4: restore what park() released
+		_dim_labels[i].visible = true
+	for i in _tethers.size():
+		var t: Dictionary = _tethers[i]
+		t["label"].text = _part_caption(t["part"].name, i)
 		t["label"].visible = true
-		t["line"].visible = true
+	if _hot_part:
+		_style_part(_hot_part, true)          # a pinned part keeps its two-line label
+	_line_hidden.clear()
+	if _tether_mesh:
+		_tether_mesh.visible = true
+		_update_tethers()
 	_set_schematic_alpha(1.0)
 	set_tether_alpha(1.0)
 
@@ -234,7 +253,8 @@ func _style_part(p: MeshInstance3D, on: bool) -> void:
 	var l: Label3D = t["label"]
 	if on:
 		l.visible = true
-		(t["line"] as MeshInstance3D).visible = true
+		_line_hidden.erase(i)
+		_update_tethers()
 		l.modulate = Tokens.HOLO_CORE
 		l.font_size = 56
 		l.text = _part_caption(p.name, i) + "\n" + _part_dims_line(p)
@@ -244,7 +264,11 @@ func _style_part(p: MeshInstance3D, on: bool) -> void:
 		var parked_or_unseen := _parked or _tether_alpha <= 0.0
 		l.modulate = Tokens.a(Tokens.HOLO_LINE, _tether_alpha)
 		l.visible = not parked_or_unseen
-		(t["line"] as MeshInstance3D).visible = not parked_or_unseen
+		if parked_or_unseen:
+			_line_hidden[i] = true
+		else:
+			_line_hidden.erase(i)
+		_update_tethers()
 
 ## "UPRIGHT ARM · 02" caption of part i (the same string its tether label carries).
 func part_caption(i: int) -> String:
@@ -336,6 +360,7 @@ func _build_dim_labels() -> void:
 		var l := Label3D.new()
 		l.name = "DimLabel%d" % i
 		l.text = Units.len_in(inches[i], long_form) + ("" if long_form else " IN")
+		_dim_texts.append(l.text)
 		l.font = load(Tokens.FONT_BOLD)
 		l.font_size = 48
 		l.pixel_size = 0.0011
@@ -354,15 +379,13 @@ func _build_tethers() -> void:
 	_tether_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_tether_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_tether_mat.albedo_color = Tokens.a(Tokens.HOLO_LINE, 0.0)
+	_tether_mesh = MeshInstance3D.new()
+	_tether_mesh.name = "Tethers"
+	_tether_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_tether_mesh.material_override = _tether_mat
+	add_child(_tether_mesh)
 	for i in _parts.size():
 		var p := _parts[i]
-		var line := MeshInstance3D.new()
-		line.name = "Tether%d" % i
-		var box := BoxMesh.new()
-		box.size = Vector3(0.0018, 0.0018, 1.0)
-		line.mesh = box
-		line.material_override = _tether_mat
-		add_child(line)
 		var l := Label3D.new()
 		l.name = "PartLabel%d" % i
 		l.text = _part_caption(p.name, i)
@@ -375,7 +398,7 @@ func _build_tethers() -> void:
 		l.modulate = Tokens.a(Tokens.HOLO_LINE, 0.0)
 		l.outline_size = 0
 		add_child(l)
-		_tethers.append({"part": p, "label": l, "line": line})
+		_tethers.append({"part": p, "label": l})
 	_update_tethers()
 
 ## "UprightArm" -> "UPRIGHT ARM · 02"
@@ -474,18 +497,38 @@ func _update_tethers() -> void:
 				moved = true
 		if not moved:
 			break
-	# Pass 3: draw the tether to the (possibly spread) tip and park the label on it.
+	# Pass 3: park each label on its (possibly spread) tip, and rebuild the ONE
+	# merged leader-line mesh (R4-3) — every tether is a thin oriented box in a
+	# single ArrayMesh, so an exploded 27-part model costs 1 draw call for its
+	# leaders instead of 27.
+	var verts := PackedVector3Array()
+	var idx := PackedInt32Array()
 	for i in n:
 		var t: Dictionary = _tethers[i]
 		var a := anchors[i]
 		var tip := adj[i]
-		var line: MeshInstance3D = t["line"]
-		var d := tip - a
-		var up := Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
-		line.transform = Transform3D(Basis.looking_at(d, up) * Basis.from_scale(Vector3(1, 1, d.length())), a.lerp(tip, 0.5))
 		var l: Label3D = t["label"]
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if sides[i] > 0 else HORIZONTAL_ALIGNMENT_RIGHT
 		l.position = tip + Vector3(sides[i] * 0.008, 0.012, 0.0)
+		if _line_hidden.has(i):
+			continue
+		var d := tip - a
+		var up := Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
+		var xf := Transform3D(Basis.looking_at(d, up) * Basis.from_scale(Vector3(1, 1, d.length())), a.lerp(tip, 0.5))
+		var base := verts.size()
+		for c in _TETHER_CORNERS:
+			verts.append(xf * c)
+		for k in _TETHER_IDX:
+			idx.append(base + k)
+	if _tether_mesh:
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_INDEX] = idx
+		var am := ArrayMesh.new()
+		if verts.size() > 0:
+			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		_tether_mesh.mesh = am
 
 ## A part's true size in the house format (X × Z × Y inches, feet+inches past 24 in) from its AABB.
 func _part_dims_line(p: MeshInstance3D) -> String:
@@ -532,7 +575,8 @@ func _set_state(shown: bool, scan: float, flash_v: float, wire: float) -> void:
 		l.visible = shown
 	for t in _tethers:
 		t["label"].visible = shown
-		t["line"].visible = shown
+	if _tether_mesh:
+		_tether_mesh.visible = shown
 	if _tether_mat:
 		set_tether_alpha(0.0)
 	for p in _parts:
@@ -550,7 +594,7 @@ func schematic_texture() -> Texture2D:
 	return _schematic_mat.albedo_texture if _schematic_mat else null
 
 func _set_schematic_alpha(a: float) -> void:
-	_schematic_mat.albedo_color = Color(1, 1, 1, a)
+	_schematic_mat.albedo_color = Color(0.70, 0.85, 0.94, a * 0.68)
 	for l in _dim_labels:
 		l.modulate = Tokens.a(Tokens.HOLO_LINE, a)
 

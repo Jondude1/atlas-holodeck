@@ -16,6 +16,22 @@ const RING_DISTANCE := 1.3
 var _voice: VoiceLink
 var _bench: CadBench
 var _vista: VistaDeck
+var _chrome := true
+
+## The floating panel + HUD dials: hidden by default so the room stays a clean space.
+## Left-hand Y summons or dismisses them; a confirmation card summons them itself,
+## because a question you cannot see is a question you cannot answer.
+func toggle_chrome() -> void:
+	_chrome = not _chrome
+	_apply_chrome()
+
+func show_chrome() -> void:
+	_chrome = true
+	_apply_chrome()
+
+func _apply_chrome() -> void:
+	_hud.set_chrome(_chrome)
+	_panel.visible = _chrome
 
 var _xr_ok := false
 var _ring_mat: ShaderMaterial
@@ -30,6 +46,7 @@ var _boot_finished := false
 var _boot_tweens: Array[Tween] = []
 
 func _ready() -> void:
+	add_to_group("holodeck_main")
 	add_child(Sfx.new())
 	_apply_tokens()
 	# XR startup lives in the XrBoot autoload (retries ~5 s, logs session signals, and
@@ -40,6 +57,10 @@ func _ready() -> void:
 		push_warning("OpenXR unavailable - using fallback camera")
 		_fallback.current = true
 		_fallback.look_at($HoloTable.global_position + Vector3.UP * 1.0)
+		for hp in ["XROrigin3D/LeftHand/Marker", "XROrigin3D/RightHand/Marker", "XROrigin3D/RightHand/Laser"]:
+			var hn := get_node_or_null(hp) as Node3D
+			if hn:
+				hn.visible = false
 		if not XrBoot.gave_up:
 			XrBoot.xr_started.connect(_on_xr_started, CONNECT_ONE_SHOT)
 	_voice = VoiceLink.new()
@@ -51,14 +72,21 @@ func _ready() -> void:
 	_bench = CadBench.new()
 	_bench.name = "CadBench"
 	add_child(_bench)
+	_bundled_demo_swap()
 	_bench.setup(_table, _model, _panel, _hud, _voice)
-	_bench.bind_station(_room.station())
+	_bench.bind_presence(_room.presence())
+	# R6-2: the wall widgets (movable readouts/pictures on the side walls)
+	var widgets := WallWidgets.new()
+	widgets.name = "WallWidgets"
+	add_child(widgets)
+	widgets.build(_bench)
 	# Round 5: the world outside the open wall — resident vistas, mood bound to the
 	# Environment + the table's light rig; the panel's VIEW button cycles them.
 	_vista = VistaDeck.new()
 	_vista.name = "VistaDeck"
 	add_child(_vista)
-	_vista.bind($WorldEnvironment.environment, _table.mood_lights())
+	_vista.rotation.y = -PI / 2.0   # R6: the deck was built facing the old left opening; the opening is on the back wall now
+	_vista.bind($WorldEnvironment.environment, _table.mood_lights(), _room.spill_material())
 	_panel.bind_vista(_vista)
 	# Round 5B: the locomotion rig owns the XR origin (stick move + snap turn, clamped
 	# to the room/doorway/terrace). Inert without controllers; never touches the fallback cam.
@@ -80,31 +108,33 @@ func _ready() -> void:
 func _on_xr_started() -> void:
 	_xr_ok = true
 	_fallback.current = false
+	for hp in ["XROrigin3D/LeftHand/Marker", "XROrigin3D/RightHand/Marker", "XROrigin3D/RightHand/Laser"]:
+		var hn := get_node_or_null(hp) as Node3D
+		if hn:
+			hn.visible = true
 	_table.set_link("LINK — LOCAL (XR)")
 
 ## Colours come from Tokens only; the scene file carries geometry, not colour.
 func _apply_tokens() -> void:
 	var env: Environment = $WorldEnvironment.environment
-	# Static procedural sky: never seen (the room hides it), exists so metals reflect a
-	# blue horizon band instead of a flat colour. Cheap: no probes, no post.
+	# Static procedural sky: never seen (the room hides it), exists so metals/floor reflect a
+	# readable neutral-charcoal horizon instead of a bright blue wash or crushed black.
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Tokens.ROOM_BG.lerp(Tokens.HOLO_DEEP, 0.55)   # upward-facing metal (floor, slab top) reflects this
-	# horizon lifted a step (brief #12): this is what bare metal reflects, so the slab / benches / rig read as machined
-	# metal with a blue gradient instead of flat black. Still never seen directly (the room encloses it).
-	sky_mat.sky_horizon_color = Tokens.HOLO_PRIMARY.lerp(Tokens.HOLO_DEEP, 0.4)
-	sky_mat.ground_horizon_color = Tokens.HOLO_PRIMARY.lerp(Tokens.HOLO_DEEP, 0.5)
-	sky_mat.ground_bottom_color = Tokens.HOLO_DEEP
+	sky_mat.sky_top_color = Color(0.22, 0.23, 0.25)
+	sky_mat.sky_horizon_color = Color(0.46, 0.48, 0.51)
+	sky_mat.ground_horizon_color = Color(0.38, 0.40, 0.43)
+	sky_mat.ground_bottom_color = Color(0.12, 0.13, 0.15)
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.ambient_light_energy = 1.1
+	env.ambient_light_energy = 0.46
 	env.fog_enabled = true
-	env.fog_light_color = Tokens.HOLO_DEEP.lerp(Tokens.ROOM_BG, 0.4)
-	env.fog_light_energy = 0.8
-	env.fog_density = 0.035
+	env.fog_light_color = Color(0.14, 0.15, 0.17)
+	env.fog_light_energy = 0.55
+	env.fog_density = 0.006
 	env.fog_sky_affect = 0.0
 	_room.build(Vector2($HoloTable.position.x, $HoloTable.position.z))
 	_hud.build(_model, _table)
@@ -146,6 +176,8 @@ func _finish_boot() -> void:
 		return
 	_boot_finished = true
 	Sfx.start_hum(self)
+	_chrome = false   # clean space by default (Jon, 2026-11-24): panel + dials summon on demand
+	_apply_chrome()
 	_booting = false
 	_on_boot_complete()
 
@@ -161,11 +193,25 @@ func _input(event: InputEvent) -> void:
 func _set_ring(v: float, param: StringName) -> void:
 	_ring_mat.set_shader_parameter(param, v)
 
+## Iterate round 5 (P5): the boot fade is a cascade, not one uniform ramp —
+## the North Star room powers up in layers: shell and ceiling bars first,
+## then the table (and with it the 3-light rig, whose energy table.set_fade
+## drives), then the HUD dials last and lightest. boot_phases maps the
+## single boot progress v to (room, table, hud) phases through overlapping
+## smoothstep windows. Endpoints are exact (v=0 -> all 0, v=1 -> all 1), so
+## the skip path and the resting state are unchanged; duration stays 1.5 s.
+static func boot_phases(v: float) -> Vector3:
+	return Vector3(
+			smoothstep(0.0, 0.55, v),
+			smoothstep(0.30, 0.85, v),
+			smoothstep(0.65, 1.0, v))
+
 func _set_fade(v: float) -> void:
-	_room.set_fade(v)
-	_hud.set_fade(v)
-	_table.set_fade(v)
-	_table.scale = Vector3.ONE * lerpf(0.94, 1.0, v)
+	var p := boot_phases(v)
+	_room.set_fade(p.x)
+	_hud.set_fade(p.z)
+	_table.set_fade(p.y)
+	_table.scale = Vector3.ONE * lerpf(0.94, 1.0, p.y)
 
 func _boot() -> void:
 	_booting = true
@@ -239,3 +285,43 @@ func _on_labels_beat() -> void:
 func _check_hub() -> void:
 	var ok: bool = await Hub.probe(self)
 	_table.set_link("LINK — HUB OK · %s" % Hub.link if ok else "LINK — LOCAL ONLY")
+
+## Jon (2026-11-24): the Star Destroyer demos the table, not the bracket. When
+## its converted GLB is bundled under res://demo/, it takes the stage spot and
+## the bracket retires (hidden, never benched). No bundle -> the bracket, as before.
+func _bundled_demo_swap() -> void:
+	if not ResourceLoader.exists("res://demo/stardestroyer.glb"):
+		return
+	var bytes := FileAccess.get_file_as_bytes("res://demo/stardestroyer.glb")
+	var f := FileAccess.open("res://demo/stardestroyer.json", FileAccess.READ)
+	if bytes.is_empty() or f == null:
+		return
+	var manifest: Variant = JSON.parse_string(f.get_as_text())
+	if not (manifest is Dictionary):
+		return
+	var m := Node3D.new()
+	m.set_script(preload("res://cad_model.gd"))
+	m.name = "DemoDestroyer"
+	m.setup(bytes, manifest)   # BEFORE add_child: CadModel loads its parts in _ready()
+	_table.add_child(m)
+	if not m.load_ok:
+		m.queue_free()
+		return
+	m.position = _model.position
+	# Centre the part on the table: imported meshes carry a corner origin, unlike
+	# the authored bracket — shift so the merged part AABB centres on the table.
+	var merged := AABB()
+	var first := true
+	for p in m.get("_parts"):
+		var pa: AABB = (p as MeshInstance3D).global_transform * (p as MeshInstance3D).get_aabb()
+		if first:
+			merged = pa
+			first = false
+		else:
+			merged = merged.merge(pa)
+	if not first:
+		var c := merged.get_center()
+		m.position.x += _table.global_position.x - c.x
+		m.position.z += _table.global_position.z - c.z
+	_model.visible = false
+	_model = m

@@ -11,6 +11,7 @@ extends Node3D
 const E_BASE := 2.0                 # emissive material multiplier; vertex colours carry intensity (0..1) of this
 const HEIGHT := 3.4
 
+var _prop_spots: Array = []   # [kind, world spot] for the grabbable bench props (R5B)
 var lit := MeshBuilder.new()
 var emi := MeshBuilder.new()
 var fx := MeshBuilder.new()
@@ -20,16 +21,19 @@ var _lit_mat: StandardMaterial3D
 var _emi_mat: StandardMaterial3D
 var _fx_mat: ShaderMaterial
 var _screen_mat: ShaderMaterial
-var _ring_mat: ShaderMaterial
-var _ring: MeshInstance3D
 var _fade := 1.0
 var _rng := RandomNumberGenerator.new()
 var _table_xz := Vector2.ZERO
 var _arm: RobotArm
-var _station: DataStation
+var _presence: Presence
+var _spill_mat: StandardMaterial3D
 
-func station() -> DataStation:
-	return _station
+func presence() -> Presence:
+	return _presence
+
+## Round 3 (P3): VistaDeck drives this material's colour on vista/grade swaps.
+func spill_material() -> StandardMaterial3D:
+	return _spill_mat
 
 # ---------------------------------------------------------------- colour helpers (Tokens only)
 
@@ -46,53 +50,120 @@ func _glow(k: float) -> Color:
 	return Color(k, k, k)
 
 ## Emissive piece: intensity k (0..1 of E_BASE) of the cyan token.
-func _e_box(c: Vector3, size: Vector3, k := 0.6, basis := Basis.IDENTITY) -> void:
-	emi.add_box(c, size, Color(Tokens.HOLO_LINE.r * k, Tokens.HOLO_LINE.g * k, Tokens.HOLO_LINE.b * k), basis)
+func _e_box(c: Vector3, size: Vector3, k := 0.6, basis := Basis.IDENTITY, eb: MeshBuilder = null) -> void:
+	(eb if eb != null else emi).add_box(c, size, Color(Tokens.HOLO_LINE.r * k, Tokens.HOLO_LINE.g * k, Tokens.HOLO_LINE.b * k), basis)
 
 # ---------------------------------------------------------------- build
 
 func build(table_xz: Vector2) -> void:
 	_table_xz = table_xz
 	_rng.seed = 1621
-	_workbench(1.0)          # Round 5: the left bench run is gone — the open wall lives there
+	# Round 6 — the room Jon asked for (the walk-in picture): bare slab benches, suit pads
+	# flanking the far opening, white ceiling bars, and SPACE. The clutter of Rounds 3–5
+	# (shelves, greebles, ceiling rig, screen bank, cables, data-station wall) is gone;
+	# readouts return as movable wall widgets (R6-2), Atlas as the free-floating Presence.
+	_bench_slabs()
 	_suit_platforms()
-	for side in [-1.0, 1.0]:
-		_shelf_unit(Vector3(side * 3.35, 0.0, -4.78), 0.0)
-	_greebles()
-	_rig(table_xz)
-	_floor_trim(table_xz)
-	_cables(table_xz)
-	_screen_bank()
-	_light_fx(table_xz)
+	_spawn_suits()
+	_ceiling_bars()
 	_seal()
-	# R3-11 living lab: the workshop arm on the right bench + the data station on the back wall
+	_spawn_props()
 	_arm = RobotArm.new()
 	_arm.name = "RobotArm"
-	_arm.position = Vector3(3.42, 0.9475, -1.05)
+	_arm.position = Vector3(3.5, 0.9475, -4.0)
 	add_child(_arm)
-	_station = DataStation.new()
-	_station.name = "DataStation"
-	_station.position = Vector3(0, 0, -4.55)
-	add_child(_station)
-	# R3-9: the table's edge light spills onto the floor as a soft gloss strip (fake reflection)
+	_presence = Presence.new()
+	_presence.name = "Presence"
+	_presence.position = Vector3(-2.15, 0.0, -2.15)   # R8 polish: true 1:1 scale so orb hovers at natural bench height (~1.42 m)
+	add_child(_presence)
+	# R3-9 / R8 tone-lift: wide, soft polished-floor sheen from the table and opening (no hard center streak)
 	var gloss := MeshInstance3D.new()
 	gloss.name = "FloorGloss"
 	var gp := PlaneMesh.new()
-	gp.size = Vector2(3.1, 1.35)
+	gp.size = Vector2(4.4, 2.4)
 	gloss.mesh = gp
-	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.15), Fx.radial_texture(128, 1.9))
-	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 1.05)
+	gloss.material_override = Fx.glow_decal(Tokens.a(Tokens.HOLO_PRIMARY, 0.032), Fx.radial_texture(128, 2.6))
+	gloss.position = Vector3(table_xz.x, 0.006, table_xz.y + 0.95)
 	add_child(gloss)
+	# R8 + feel round: daylight spill from the opening — an elongated pool of
+	# daylight reaching in from the threshold and dying out ~3 m inside the
+	# room (Oculus Home research: fake the spill, let it fall off fast, or the
+	# room reads as outdoors). Round 3 (P3): the colour is no longer static —
+	# VistaDeck re-tints this material on every vista/grade swap (the initial
+	# value below is coast/day, identical to the old static tint).
+	var spill := MeshInstance3D.new()
+	spill.name = "VistaSpill"
+	var spm := PlaneMesh.new()
+	spm.size = Vector2(5.6, 3.0)
+	spill.mesh = spm
+	_spill_mat = Fx.glow_decal(Color(0.82, 0.87, 0.93, 0.10), Fx.radial_texture(128, 2.4))
+	spill.material_override = _spill_mat
+	spill.position = Vector3(0, 0.005, -3.55)
+	add_child(spill)
 
-## Round 5: two ring-lit display platforms flanking the open wall — the suit bay.
-## (The suits themselves arrive via the image-to-3D pipeline; the pads are architecture.)
+	# R7-0: baked contact shadows — with no realtime shadow maps (Quest budget), soft
+	# dark blobs under the furniture are what ground it; flat CG floats, this sits.
+	var sh_mat := StandardMaterial3D.new()
+	sh_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sh_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sh_mat.albedo_color = Color(0, 0, 0, 0.4)
+	sh_mat.albedo_texture = Fx.radial_texture(128, 1.6)
+	for spec in [[Vector3(table_xz.x, 0.003, table_xz.y), Vector2(3.6, 2.2)],
+			[Vector3(3.55, 0.003, -2.5), Vector2(1.5, 4.6)],
+			[Vector3(-3.55, 0.003, -2.5), Vector2(1.5, 4.6)]]:
+		var sh := MeshInstance3D.new()
+		var sp := PlaneMesh.new()
+		sp.size = spec[1]
+		sh.mesh = sp
+		sh.material_override = sh_mat
+		sh.position = spec[0]
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(sh)
+
+## Round 6 / R8 tone-lift: two ring-lit display platforms flanking the FAR opening, inside the room —
+## readable satin charcoal bases with crisp cyan rings matching the look reference.
+## Iterate round 1 (P1): the suits themselves, standing on the pads below —
+## hero on BOTH pads for now (Jon, 2026-11-25 — heroine parked until her
+## clean model lands), facing into the room (+Z) as in the North Star.
+func _spawn_suits() -> void:
+	var spots := [
+		["SuitHero", "res://suits/suit_hero.glb", -2.5],
+		["SuitHeroR", "res://suits/suit_hero.glb", 2.5],
+	]
+	for s in spots:
+		var suit := SuitDisplay.new()
+		suit.name = String(s[0])
+		suit.position = Vector3(float(s[2]), 0.081, -4.3)   # pad top
+		add_child(suit)
+		suit.setup(String(s[1]))
+
 func _suit_platforms() -> void:
-	for z in [-3.35, 0.85]:
-		lit.add_cyl(Vector3(-3.15, 0.035, z), 0.58, 0.07, _ti(0.5), 28)
-		lit.add_cyl(Vector3(-3.15, 0.075, z), 0.5, 0.012, _deep(0.3), 28)
-		var ring := Color(Tokens.HOLO_LINE.r * 0.32, Tokens.HOLO_LINE.g * 0.32, Tokens.HOLO_LINE.b * 0.32)
-		emi.add_torus(Vector3(-3.15, 0.078, z), 0.53, 0.012, ring, 48, 6)
-		emi.add_cyl(Vector3(-3.15, 0.004, z), 0.64, 0.008, ring * 0.35, 28)
+	for px in [-2.5, 2.5]:
+		lit.add_cyl(Vector3(px, 0.035, -4.3), 0.58, 0.07, Color(0.32, 0.35, 0.39), 28)
+		lit.add_cyl(Vector3(px, 0.075, -4.3), 0.5, 0.012, Color(0.18, 0.20, 0.24), 28)
+		var ring := Color(Tokens.HOLO_LINE.r * 0.60, Tokens.HOLO_LINE.g * 0.60, Tokens.HOLO_LINE.b * 0.60)
+		emi.add_torus(Vector3(px, 0.078, -4.3), 0.53, 0.012, ring, 48, 6)
+		emi.add_cyl(Vector3(px, 0.004, -4.3), 0.64, 0.008, ring * 0.45, 28)
+
+## Bare benches along both side walls — readable charcoal slabs on block legs, subtle cyan edge line,
+## nothing on them but what Jon puts there (the props + the arm, on the right).
+func _bench_slabs() -> void:
+	for side in [-1.0, 1.0]:
+		var x: float = side * 3.55
+		lit.add_box(Vector3(x, 0.92, -2.5), Vector3(0.7, 0.055, 3.9), Color(0.28, 0.30, 0.33))
+		for lz in [-4.15, -0.85]:
+			lit.add_box(Vector3(x, 0.44, lz), Vector3(0.6, 0.85, 0.18), Color(0.16, 0.18, 0.20))
+		_e_box(Vector3(x - side * 0.36, 0.9, -2.5), Vector3(0.012, 0.012, 3.9), 0.28)
+	# the grabbable props live on the right slab
+	_prop_spots.append([5, Vector3(3.5, 0.9475, -2.25)])
+	_prop_spots.append([6, Vector3(3.5, 0.9475, -1.55)])
+
+## Slim WHITE light bars in the charcoal ceiling (the reference's lighting signature) —
+## crisp overhead presence without washing out the room.
+func _ceiling_bars() -> void:
+	emi.add_box(Vector3(0, 3.36, -1.0), Vector3(0.13, 0.03, 3.4), Color(1.05, 1.08, 1.12))
+	for side in [-1.0, 1.0]:
+		emi.add_box(Vector3(side * 2.3, 3.36, -1.0), Vector3(0.10, 0.03, 2.6), Color(0.82, 0.85, 0.88))
 
 func _seal() -> void:
 	_lit_mat = StandardMaterial3D.new()
@@ -112,27 +183,17 @@ func _seal() -> void:
 	_fx_mat = ShaderMaterial.new()
 	_fx_mat.shader = load("res://lightfx.gdshader")
 	_fx_mat.set_shader_parameter("line_color", Tokens.HOLO_LINE)
-	_add_mesh("LabLightFx", fx.build(), _fx_mat)
+	if fx.vertex_count() > 0:
+		_add_mesh("LabLightFx", fx.build(), _fx_mat)
 
 	_screen_mat = ShaderMaterial.new()
 	_screen_mat.shader = load("res://screens.gdshader")
 	_screen_mat.set_shader_parameter("line_color", Tokens.HOLO_LINE)
 	_screen_mat.set_shader_parameter("core_color", Tokens.HOLO_CORE)
 	_screen_mat.set_shader_parameter("deep_color", Tokens.HOLO_DEEP)
-	_add_mesh("LabScreens", screens.build(), _screen_mat)
+	if screens.vertex_count() > 0:
+		_add_mesh("LabScreens", screens.build(), _screen_mat)
 
-	# the slow-turning holographic ring above the table (the ring HUD shader, laid flat and tilted)
-	_ring_mat = Fx.ring_material()
-	_ring_mat.set_shader_parameter("progress", 1.0)
-	_ring_mat.set_shader_parameter("arc_on", 0.0)
-	var q := QuadMesh.new()
-	q.size = Vector2.ONE * 1.5
-	_ring = MeshInstance3D.new()
-	_ring.name = "HoloRing"
-	_ring.mesh = q
-	_ring.material_override = _ring_mat
-	_ring.position = Vector3(_table_xz.x, 2.18, _table_xz.y)
-	add_child(_ring)
 	set_fade(_fade)
 
 func _add_mesh(nm: String, mesh: ArrayMesh, mat: Material) -> void:
@@ -151,48 +212,15 @@ func set_fade(v: float) -> void:
 	_emi_mat.albedo_color = Color(E_BASE * v, E_BASE * v, E_BASE * v)
 	_fx_mat.set_shader_parameter("fade", v)
 	_screen_mat.set_shader_parameter("fade", v)
-	_ring_mat.set_shader_parameter("fade", v * 0.8)
-	if _station:
-		_station.set_fade(v)
-
-func _process(delta: float) -> void:
-	if _ring:
-		_ring.rotate_y(deg_to_rad(7.0) * delta)
-		_ring.rotation.x = deg_to_rad(90.0) + deg_to_rad(5.0) * sin(Time.get_ticks_msec() / 1000.0 * 0.35)
+	if _presence:
+		_presence.set_fade(v)
 
 # ---------------------------------------------------------------- workbenches
 
 ## A long bench against a side wall: cabinets with seams and cyan handles, a work top with a lit edge, and equipment.
-func _workbench(side: float) -> void:
-	var x := side * 3.42
-	var z0 := -4.5
-	var z1 := -0.7
-	var face_x := x - side * 0.38                         # the cabinet face looking into the room
-	var top_y := 0.92
-	var length := z1 - z0
-	var zc := (z0 + z1) * 0.5
-	lit.add_box(Vector3(x, top_y, zc), Vector3(0.84, 0.055, length + 0.06), _ti(0.55))              # work top
-	lit.add_box(Vector3(x, 0.07, zc), Vector3(0.78, 0.14, length), _ti(0.0))                         # plinth
-	var n := 4
-	for k in n:
-		var zk := z0 + (float(k) + 0.5) * length / n
-		var w := length / n - 0.03
-		lit.add_box(Vector3(x, 0.52, zk), Vector3(0.76, 0.74, w), _deep(0.25).lerp(_ti(0.3), 0.5))   # cabinet body
-		lit.add_box(Vector3(face_x - side * 0.01, 0.52, zk), Vector3(0.025, 0.68, w - 0.05), _ti(0.18))   # door
-		_e_box(Vector3(face_x - side * 0.03, 0.66, zk + w * 0.34), Vector3(0.018, 0.16, 0.012), 0.5)      # handle
-	_e_box(Vector3(face_x - side * 0.01, top_y - 0.04, zc), Vector3(0.012, 0.012, length), 0.55)         # lit worktop edge
-	_e_box(Vector3(face_x - side * 0.01, 0.145, zc), Vector3(0.01, 0.01, length), 0.35)                  # toe-kick glow
-	# equipment on the top
-	var z := z0 + 0.25
-	var item := 0
-	while z < z1 - 0.25:
-		var kind := (item + (0 if side < 0 else 2)) % 7
-		z += _bench_item(kind, Vector3(x, top_y + 0.0275, z), side)
-		item += 1
-
-## Returns the z advance used.
-func _bench_item(kind: int, at: Vector3, side: float) -> float:
+func _bench_item(kind: int, at: Vector3, side: float, lb: MeshBuilder = null, eb: MeshBuilder = null) -> float:
 	var inward := -side           # towards the room
+	var L := lb if lb != null else lit   # props pass their own builders (kinds 5/6 only)
 	match kind:
 		0:  # monitor on an arm
 			lit.add_box(at + Vector3(side * 0.2, 0.03, 0), Vector3(0.22, 0.02, 0.24), _ti(0.2))
@@ -228,64 +256,26 @@ func _bench_item(kind: int, at: Vector3, side: float) -> float:
 				_e_box(at + Vector3(inward * 0.251, 0.05 + r * 0.07, 0), Vector3(0.006, 0.01, 0.2), 0.4)
 			return 0.65
 		5:  # lamp arm + cable reel
-			lit.add_cyl(at + Vector3(0, 0.015, 0), 0.07, 0.03, _ti(0.3), 12)
-			lit.add_rod(at + Vector3(0, 0.03, 0), at + Vector3(inward * 0.1, 0.42, 0.04), 0.01, _ti(0.5))
-			lit.add_rod(at + Vector3(inward * 0.1, 0.42, 0.04), at + Vector3(inward * 0.3, 0.38, 0.1), 0.01, _ti(0.5))
-			_e_box(at + Vector3(inward * 0.31, 0.37, 0.1), Vector3(0.05, 0.012, 0.05), 0.9)
-			lit.add_torus(at + Vector3(side * 0.06, 0.08, -0.32), 0.1, 0.035, _deep(0.5), 18, 6, Basis(Vector3.RIGHT, 0.2))
+			L.add_cyl(at + Vector3(0, 0.015, 0), 0.07, 0.03, _ti(0.3), 12)
+			L.add_rod(at + Vector3(0, 0.03, 0), at + Vector3(inward * 0.1, 0.42, 0.04), 0.01, _ti(0.5))
+			L.add_rod(at + Vector3(inward * 0.1, 0.42, 0.04), at + Vector3(inward * 0.3, 0.38, 0.1), 0.01, _ti(0.5))
+			_e_box(at + Vector3(inward * 0.31, 0.37, 0.1), Vector3(0.05, 0.012, 0.05), 0.9, Basis.IDENTITY, eb)
+			L.add_torus(at + Vector3(side * 0.06, 0.08, -0.32), 0.1, 0.035, _deep(0.5), 18, 6, Basis(Vector3.RIGHT, 0.2))
 			return 0.7
 		_:  # crates
-			lit.add_box(at + Vector3(0, 0.1, 0), Vector3(0.4, 0.2, 0.34), _deep(0.3 + 0.2 * _rng.randf()))
-			lit.add_box(at + Vector3(0.02, 0.28, 0.02), Vector3(0.3, 0.16, 0.26), _deep(0.25 + 0.2 * _rng.randf()))
-			_e_box(at + Vector3(inward * 0.201, 0.1, 0), Vector3(0.006, 0.02, 0.14), 0.4)
+			L.add_box(at + Vector3(0, 0.1, 0), Vector3(0.4, 0.2, 0.34), _deep(0.3 + 0.2 * _rng.randf()))
+			L.add_box(at + Vector3(0.02, 0.28, 0.02), Vector3(0.3, 0.16, 0.26), _deep(0.25 + 0.2 * _rng.randf()))
+			_e_box(at + Vector3(inward * 0.201, 0.1, 0), Vector3(0.006, 0.02, 0.14), 0.4, Basis.IDENTITY, eb)
 			return 0.55
 
 # ---------------------------------------------------------------- shelving
 
 ## A shelving unit against the back wall (origin = floor point at the unit's centre): four uprights, boards with lit edges,
 ## crates, drums and tool silhouettes on every level.
-func _shelf_unit(o: Vector3, _yaw: float) -> void:
-	var w := 1.1
-	var d := 0.42
-	var h := 2.35
-	for ux in [-w * 0.5, w * 0.5]:
-		for uz in [-(d * 0.5 - 0.04), d * 0.5 - 0.04]:
-			lit.add_box(o + Vector3(ux, h * 0.5, uz), Vector3(0.045, h, 0.045), _ti(0.3))
-	var levels := [0.18, 0.78, 1.38, 1.98]
-	for ly in levels:
-		lit.add_box(o + Vector3(0, ly, 0), Vector3(w, 0.035, d), _ti(0.4))
-		_e_box(o + Vector3(0, ly + 0.002, d * 0.5 + 0.003), Vector3(w - 0.04, 0.008, 0.008), 0.5)        # lit front edge
-		var x := -w * 0.5 + 0.1
-		while x < w * 0.5 - 0.12:
-			var kind := _rng.randi() % 5
-			var iw := 0.1 + 0.16 * _rng.randf()
-			var ih := 0.12 + 0.34 * _rng.randf()
-			var base := o + Vector3(x + iw * 0.5, ly + 0.0175, 0.0)
-			if kind == 0:     # drum
-				lit.add_cyl(base + Vector3(0, ih * 0.5, 0), iw * 0.5, ih, _ti(0.1 + 0.3 * _rng.randf()), 10)
-				_e_box(base + Vector3(0, ih * 0.75, d * 0.0) + Vector3(0, 0, iw * 0.5), Vector3(iw * 0.4, 0.008, 0.006), 0.55)
-			elif kind == 1:   # tool: handle + head
-				lit.add_rod(base + Vector3(0, 0, 0), base + Vector3(0, ih + 0.1, 0), 0.012, _ti(0.5), 6)
-				lit.add_box(base + Vector3(0, ih + 0.1, 0), Vector3(iw * 0.9, 0.04, 0.05), _ti(0.35))
-			else:             # crate
-				lit.add_box(base + Vector3(0, ih * 0.5, 0), Vector3(iw, ih, d * 0.7), _deep(0.25 + 0.4 * _rng.randf()))
-				_e_box(base + Vector3(0, ih * 0.7, d * 0.35 + 0.003), Vector3(iw * 0.5, 0.008, 0.006), 0.5)
-				if _rng.randf() < 0.4:
-					_e_box(base + Vector3(iw * 0.3, ih * 0.35, d * 0.35 + 0.003), Vector3(0.012, 0.012, 0.006), 1.0)   # status LED
-			x += iw + 0.03 + 0.08 * _rng.randf()
-	for ux in [-w * 0.5, w * 0.5]:                                                                         # lit uprights
-		_e_box(o + Vector3(ux, h * 0.5, d * 0.5 + 0.026), Vector3(0.008, h - 0.1, 0.006), 0.4)
-
 # ---------------------------------------------------------------- walls
 
 ## Panel pilasters, pipe runs on brackets, vents, junction boxes with LEDs - along each wall so the planes read as
 ## built, not painted. (a = wall start, dir = along the wall, n = inward normal)
-func _greebles() -> void:
-	_wall_run(Vector3(-4.0, 0, -5.0), Vector3(1, 0, 0), Vector3(0, 0, 1), 8.0, false)  # back wall (the ticker screen owns the high band)
-	_wall_run(Vector3(-4.0, 0, 3.0), Vector3(0, 0, -1), Vector3(1, 0, 0), 8.0)       # left wall
-	_wall_run(Vector3(4.0, 0, -5.0), Vector3(0, 0, 1), Vector3(-1, 0, 0), 8.0)       # right wall
-	_wall_run(Vector3(4.0, 0, 3.0), Vector3(-1, 0, 0), Vector3(0, 0, -1), 8.0)       # front wall (behind the player)
-
 func _wall_run(a: Vector3, dir: Vector3, n: Vector3, length: float, vents := true) -> void:
 	var basis := Basis(dir, Vector3.UP, n)                         # local X along the wall, Z = inward normal
 	var step_m := 2.0
@@ -316,117 +306,29 @@ func _wall_run(a: Vector3, dir: Vector3, n: Vector3, length: float, vents := tru
 
 # ---------------------------------------------------------------- ceiling rig
 
-func _rig(t: Vector2) -> void:
-	var y := 3.02
-	var hx := 1.55
-	var hz := 1.15
-	for sx in [-1.0, 1.0]:
-		lit.add_box(Vector3(t.x + sx * hx, y, t.y), Vector3(0.09, 0.11, hz * 2.0), _ti(0.25))               # long rails
-		for sz in [-1.0, 1.0]:
-			lit.add_rod(Vector3(t.x + sx * hx, y + 0.05, t.y + sz * hz * 0.85), Vector3(t.x + sx * hx, HEIGHT - 0.2, t.y + sz * hz * 0.85), 0.012, _ti(0.5), 6)   # hangers
-	for sz in [-1.0, 1.0]:
-		lit.add_box(Vector3(t.x, y, t.y + sz * hz), Vector3(hx * 2.0, 0.11, 0.09), _ti(0.25))               # cross rails
-	# ring light: a lit torus slung under the rig on four spokes
-	var ring_y := 2.92
-	emi.add_torus(Vector3(t.x, ring_y, t.y), 1.02, 0.016, Color(Tokens.HOLO_LINE.r * 0.4, Tokens.HOLO_LINE.g * 0.4, Tokens.HOLO_LINE.b * 0.4), 64, 8)   # v2 look pass: slim + quiet
-	lit.add_torus(Vector3(t.x, ring_y + 0.04, t.y), 1.02, 0.034, _ti(0.3), 64, 8)
-	for a in 4:
-		var dir := Vector3(cos(a * PI * 0.5 + PI * 0.25), 0, sin(a * PI * 0.5 + PI * 0.25))
-		lit.add_rod(Vector3(t.x, y, t.y) + dir * 0.1, Vector3(t.x, ring_y + 0.04, t.y) + dir * 1.02, 0.012, _ti(0.4), 6)
-	# four spot housings on the rails, lens glowing down
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var p := Vector3(t.x + sx * hx * 0.56, y - 0.08, t.y + sz * hz * 0.45)
-			lit.add_cyl(p + Vector3(0, -0.05, 0), 0.085, 0.16, _ti(0.15), 12)
-			lit.add_rod(p + Vector3(0, 0.0, 0), Vector3(p.x + sx * hx * 0.44, y, p.z), 0.008, _ti(0.5), 5)
-			emi.add_cyl(p + Vector3(0, -0.135, 0), 0.07, 0.012, Tokens.HOLO_CORE * 0.5, 12)
-
 # ---------------------------------------------------------------- floor
-
-func _floor_trim(t: Vector2) -> void:
-	var y := 0.006
-	var hx := 1.62
-	var hz := 0.98
-	for sx in [-1.0, 1.0]:
-		_e_box(Vector3(t.x + sx * hx, y, t.y), Vector3(0.022, 0.006, hz * 2.0), 0.55)
-	for sz in [-1.0, 1.0]:
-		_e_box(Vector3(t.x, y, t.y + sz * hz), Vector3(hx * 2.0, 0.006, 0.022), 0.55)
-	# dashed lead-ins running out to the side benches, and toward the player
-	for sx in [-1.0, 1.0]:
-		var x := hx + 0.3
-		while x < 2.75:
-			_e_box(Vector3(t.x + sx * x, y, t.y), Vector3(0.28, 0.006, 0.014), 0.4)
-			x += 0.42
-	var zz := hz + 0.3
-	while zz < 2.3:
-		_e_box(Vector3(t.x, y, t.y + zz), Vector3(0.014, 0.006, 0.28), 0.32)
-		zz += 0.42
-	# corner marks
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			_e_box(Vector3(t.x + sx * (hx + 0.15), y, t.y + sz * (hz + 0.15)), Vector3(0.3, 0.006, 0.014), 0.7)
-			_e_box(Vector3(t.x + sx * (hx + 0.15), y, t.y + sz * (hz + 0.15)), Vector3(0.014, 0.006, 0.3), 0.7)
-
-## Heavy dark cables from the table's rear legs out to the benches, with clips.
-func _cables(t: Vector2) -> void:
-	for side in [-1.0, 1.0]:
-		var pts := [Vector3(t.x + side * 0.98, 0.03, t.y - 0.42), Vector3(t.x + side * 1.5, 0.03, t.y - 0.62),
-				Vector3(t.x + side * 2.0, 0.03, t.y - 1.1), Vector3(t.x + side * 2.45, 0.03, t.y - 1.5), Vector3(side * 3.0, 0.03, -3.25)]
-		for k in pts.size() - 1:
-			lit.add_rod(pts[k], pts[k + 1], 0.024, _ti(0.05), 8, true)
-			lit.add_box((pts[k] + pts[k + 1]) * 0.5 + Vector3(0, 0.0, 0.0), Vector3(0.05, 0.012, 0.05), _ti(0.4))
-		_e_box(pts[pts.size() - 1] + Vector3(0, 0.02, 0), Vector3(0.05, 0.02, 0.05), 0.8)
 
 # ---------------------------------------------------------------- screens
 
-func _screen_bank() -> void:
-	# [centre, size, yaw_deg (0 faces +Z, 90 faces +X, -90 faces -X), kind, seed]
-	var defs := [
-		[Vector3(-2.0, 1.95, -4.96), Vector2(1.5, 0.85), 0.0, 0, 0.12],
-		[Vector3(2.0, 1.95, -4.96), Vector2(1.5, 0.85), 0.0, 1, 0.47],
-		[Vector3(0.0, 2.8, -4.96), Vector2(2.6, 0.36), 0.0, 3, 0.81],
-		[Vector3(-3.96, 1.95, -2.1), Vector2(1.6, 0.9), 90.0, 2, 0.33],
-		[Vector3(-3.96, 1.95, -4.05), Vector2(1.5, 0.85), 90.0, 1, 0.64],
-		[Vector3(3.96, 1.95, -2.1), Vector2(1.6, 0.9), -90.0, 3, 0.9],
-		[Vector3(3.96, 1.95, -4.05), Vector2(1.5, 0.85), -90.0, 0, 0.27],
-	]
-	for d in defs:
-		var c: Vector3 = d[0]
-		var sz: Vector2 = d[1]
-		var b := Basis(Vector3.UP, deg_to_rad(d[2]))
-		var n := b.z
-		var aspect := sz.x / sz.y
-		screens.add_quad(c + n * 0.045, sz, b, Color(d[4], float(d[3]) / 8.0, aspect / 8.0, 1.0))
-		# bezel: dark frame box behind the glass and a thin lit outline
-		lit.add_box(c + n * 0.02, Vector3(sz.x + 0.1, sz.y + 0.1, 0.04), _ti(0.08), b)
-		var ol := 0.012
-		_e_box(c + n * 0.048 + b.y * (sz.y * 0.5 + 0.045), Vector3(sz.x + 0.1, ol, 0.004), 0.5, b)
-		_e_box(c + n * 0.048 - b.y * (sz.y * 0.5 + 0.045), Vector3(sz.x + 0.1, ol, 0.004), 0.5, b)
-
 # ---------------------------------------------------------------- light FX (additive, one mesh)
 
-func _light_fx(t: Vector2) -> void:
-	var table_top := 0.97
-	# shafts from the four spots (soft) and a broad one from the ring, all ending on the table
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var top := Vector3(t.x + sx * 1.55 * 0.56, 2.86, t.y + sz * 1.15 * 0.45)
-			var bot := Vector3(t.x + sx * 0.5, table_top, t.y + sz * 0.3)
-			fx.add_shaft(top, 0.07, bot, 0.42, Color(0.055, 0.0, (sx + sz + 2.0) * 0.045, 1.0), 14)   # v2 look pass: shafts barely-there (was ~3x)
-	fx.add_shaft(Vector3(t.x, 2.9, t.y), 1.0, Vector3(t.x, table_top, t.y), 0.8, Color(0.015, 0.0, 0.15, 1.0), 28)
-	# layered glow halos around the ring and a pool of light on the slab
-	var down := Basis(Vector3.RIGHT, deg_to_rad(90.0))                    # quad normal -> +Y ... facing up
-	var flat_up := Basis(Vector3.RIGHT, deg_to_rad(-90.0))
-	fx.add_quad(Vector3(t.x, 2.93, t.y), Vector2(3.0, 3.0), down, Color(0.08, 0.5, 0.05, 1.0))
-	fx.add_quad(Vector3(t.x, 2.94, t.y), Vector2(1.7, 1.7), down, Color(0.14, 0.5, 0.2, 1.0))
-	fx.add_quad(Vector3(t.x, table_top, t.y), Vector2(2.1, 1.1), flat_up, Color(0.12, 0.5, 0.38, 1.0))
-	# floor: under-glow spill + gloss streaks under the strips and each leg (the "reflection" of the cyan lines)
-	fx.add_quad(Vector3(t.x, 0.009, t.y), Vector2(3.6, 2.2), flat_up, Color(0.19, 0.5, 0.1, 1.0))
-	for sz in [-1.0, 1.0]:
-		var yaw := Basis(Vector3.UP, deg_to_rad(0.0 if sz > 0 else 180.0))
-		var streak := yaw * flat_up
-		fx.add_quad(Vector3(t.x, 0.008, t.y + sz * (0.62 + 0.3)), Vector2(2.3, 0.6), streak, Color(0.55, 1.0, 0.3, 1.0))
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var yaw2 := Basis(Vector3.UP, deg_to_rad(0.0 if sz > 0 else 180.0))
-			fx.add_quad(Vector3(t.x + sx * 1.0, 0.0085, t.y + sz * (0.45 + 0.4)), Vector2(0.12, 0.8), yaw2 * flat_up, Color(0.5, 1.0, 0.6, 1.0))
+func _spawn_props() -> void:
+	for spot in _prop_spots:
+		var kind := int(spot[0])
+		var plit := MeshBuilder.new()
+		var pemi := MeshBuilder.new()
+		_bench_item(kind, Vector3.ZERO, 1.0, plit, pemi)
+		var prop := Prop.new()
+		prop.name = "PropLamp" if kind == 5 else "PropCrates"
+		var lm := MeshInstance3D.new()
+		lm.mesh = plit.build()
+		lm.material_override = _lit_mat
+		prop.add_child(lm)
+		var em := MeshInstance3D.new()
+		em.mesh = pemi.build()
+		em.material_override = _emi_mat
+		prop.add_child(em)
+		prop.center_local = Vector3(0, 0.24, 0) if kind == 5 else Vector3(0, 0.18, 0)
+		prop.grab_radius = 0.5
+		prop.position = spot[1]
+		add_child(prop)

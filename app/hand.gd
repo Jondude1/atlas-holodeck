@@ -17,6 +17,7 @@ var _last := Vector2.ZERO
 @onready var _laser: Node3D = get_node_or_null("Laser")
 
 func _ready() -> void:
+	add_to_group("hand")   # R5B: world actors (the robot arm) find hands by this group
 	add_to_group("holodeck_hands")
 	button_pressed.connect(_on_pressed)
 	button_released.connect(_on_released)
@@ -65,6 +66,8 @@ func _on_pressed(action: String) -> void:
 			_pressing = true
 			_send_button(Vector2(hit.x, hit.y), true)
 			buzz(0.015, 0.25)  # R2-1: panel poke tick
+		elif _measure_click():
+			buzz(0.02, 0.4)  # R7-3: tape pin dropped
 		else:
 			# secondary PTT: the right trigger when aimed off the panel (on the panel it clicks UI)
 			var v := get_tree().get_first_node_in_group("voice") as VoiceLink
@@ -72,7 +75,18 @@ func _on_pressed(action: String) -> void:
 				_ptt_held = true
 				v.ptt_begin()
 
+## R7-3 tape measure: while the bench's measure mode is armed, a trigger click whose
+## ray strikes the active model drops a pin there instead of starting push-to-talk.
+func _measure_click() -> bool:
+	var bench := get_tree().get_first_node_in_group("cad_bench")
+	if bench and bench.has_method("measure_armed") and bench.measure_armed():
+		return bench.measure_pick(global_position, -global_basis.z)
+	return false
+
 func _on_released(action: String) -> void:
+	if action == "by_button" and not pointer:
+		# left Y: summon / dismiss the floating UI (the clean-space toggle)
+		get_tree().call_group("holodeck_main", "toggle_chrome")
 	if action == "menu_button":
 		# a TAP (released before the long-press fired) resets the model; the long-press is the floor-height fix
 		if _menu_down_ms >= 0 and not pointer:
@@ -122,7 +136,18 @@ var _panel_ray := false
 func stick_claimed() -> bool:
 	return _panel_ray
 
+var _tap_prev := Vector3(0, -10, 0)
+var _tap_cd := 0.0
+
 func _process(_delta: float) -> void:
+	# R7-4: tabletop taps — a quick downward crossing of the surface band knocks
+	_tap_cd = maxf(0.0, _tap_cd - _delta)
+	if _tap_cd <= 0.0 and _tap_prev.y > -5.0:
+		var table := get_tree().get_first_node_in_group("holo_table")
+		if table and table.tap_at(_tap_prev, global_position):
+			_tap_cd = 0.3
+			buzz(0.02, 0.35)
+	_tap_prev = global_position
 	# long-press (~0.8 s) of the left menu button = RESET FLOOR (fires once per hold)
 	if _menu_down_ms >= 0 and Time.get_ticks_msec() - _menu_down_ms >= RESET_HOLD_MS:
 		_menu_down_ms = -1

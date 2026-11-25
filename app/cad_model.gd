@@ -5,14 +5,25 @@ extends "res://model.gd"
 ## scaled up by display_scale so a 3 in part reads at table size, and every displayed dimension divides it back out.
 ## Loader promoted from parked/trebuchet-app-20261119/ (GLTFDocument path, flat parts re-parented by name).
 
-const DISPLAY_FIT_M := 0.5          # longest horizontal true dimension is shown at this width on the inset
+const DISPLAY_FIT_M := 0.96         # Round A: largest clean fit. 1.4 was tried — a model's long axis can lie
+                                    # across the table's DEPTH (the destroyer's does), and at 1.4 its volume
+                                    # overhangs the slab front/back (1.40 vs the 1.22 slab / 1.0 inset).
+                                    # 0.96 keeps the volume, dim labels and silhouette inside the inset.
 const SCALE_MIN := 0.25
 const SCALE_MAX := 14.0
+# Round A: hero hologram rings (the reference picture's thin rings around the hero).
+const HeroRing := preload("res://hero_ring.gd")
+const RING_UNDER_R := 0.62    # flat under-ring radius, × the footprint's bounding radius
+const RING_ORBIT_R := 1.18    # tilted ring radius, × the same bounding radius
+const RING_TILT_DEG := 18.0
 
+var world_solid := false   # R5B: true while this model lives in the world as a solid object
 var manifest := {}
 var model_name := "MODEL"
 var load_ok := false
 var _glb := PackedByteArray()
+var _ring_root: Node3D     # Round A: hero rings (children, so they follow grab/park/solidify)
+var _rings_shown := false  # mirrors the model's materialize state; park() hides on top of it
 
 func setup(glb: PackedByteArray, man: Dictionary) -> void:
 	_glb = glb
@@ -22,6 +33,78 @@ func setup(glb: PackedByteArray, man: Dictionary) -> void:
 func _ready() -> void:
 	load_ok = _load_parts()
 	super()
+	_build_hero_rings()
+
+## Round A (hero presence, per the North Star reference): two thin hologram rings
+## around the active model — one flat just under the hull, one larger, tilted 18°,
+## counter-rotating slowly (5.0 / -3.5 deg/s). Built AFTER super() so the rings
+## never land in _parts/_bounds. They share the parts' mesh hologram material
+## (instance params pin them to the resolved state) and cost 2 draw calls.
+func _build_hero_rings() -> void:
+	if _parts.is_empty():
+		return
+	var c := _bounds.get_center()
+	var half_diag := 0.5 * Vector2(_bounds.size.x, _bounds.size.z).length()
+	if half_diag < 0.02:
+		return
+	_ring_root = Node3D.new()
+	_ring_root.name = "HeroRings"
+	_ring_root.visible = false
+	add_child(_ring_root)
+	var flat := HeroRing.new()
+	flat.name = "RingPivotFlat"
+	flat.speed_deg = 5.0
+	flat.position = Vector3(c.x, 0.0, c.z)
+	_ring_root.add_child(flat)
+	var under := _ring_mesh("RingUnder", half_diag * RING_UNDER_R, 0.60)
+	under.position.y = _bounds.position.y + 0.005
+	flat.add_child(under)
+	var orbit := HeroRing.new()
+	orbit.name = "RingPivotOrbit"
+	orbit.speed_deg = -3.5
+	# pivot high enough that the tilted ring's low arc never dips under the model's base plane
+	orbit.position = Vector3(c.x, _bounds.position.y + half_diag * RING_ORBIT_R * sin(deg_to_rad(RING_TILT_DEG)) + 0.012, c.z)
+	_ring_root.add_child(orbit)
+	var orb := _ring_mesh("RingOrbit", half_diag * RING_ORBIT_R, 0.42)
+	orb.rotation_degrees.x = RING_TILT_DEG
+	orbit.add_child(orb)
+
+func _ring_mesh(nm: String, radius: float, alpha_wire: float) -> MeshInstance3D:
+	var tm := TorusMesh.new()
+	tm.inner_radius = radius - 0.0045
+	tm.outer_radius = radius + 0.0045
+	tm.rings = 72
+	tm.ring_segments = 10
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	mi.mesh = tm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.material_override = Fx.mesh_part_material()
+	mi.set_instance_shader_parameter(&"wire", alpha_wire)
+	mi.set_instance_shader_parameter(&"scan", 1.2)
+	mi.set_instance_shader_parameter(&"y0", 0.0)
+	mi.set_instance_shader_parameter(&"y1", 3.0)
+	mi.set_instance_shader_parameter(&"flash", 0.0)
+	return mi
+
+## Ring visibility rides the model's own state: shown by materialize/_set_state,
+## hidden while parked (the bench's resting state), back on unpark.
+func _set_state(shown: bool, scan: float, flash_v: float, wire: float) -> void:
+	super(shown, scan, flash_v, wire)
+	_rings_shown = shown
+	_apply_rings()
+
+func park(to: Vector3, s := 0.55) -> void:
+	super(to, s)
+	_apply_rings()
+
+func unpark() -> void:
+	super()
+	_apply_rings()
+
+func _apply_rings() -> void:
+	if _ring_root:
+		_ring_root.visible = _rings_shown and not _parked
 
 func _make_material(_p: MeshInstance3D) -> ShaderMaterial:
 	return Fx.mesh_part_material()

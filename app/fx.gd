@@ -23,9 +23,9 @@ static func grid_material(base: Color, minor_step: float, major_step: float) -> 
 	m.set_shader_parameter("major_strength", Tokens.GRID_MINOR_ALPHA * 2.0)
 	m.set_shader_parameter("minor_spacing", minor_step)
 	m.set_shader_parameter("major_spacing", major_step)
-	m.set_shader_parameter("minor_strength", 0.22)   # v2 look pass (Jon: "obnoxious blue lines") — the grid whispers; the hologram is the hero
-	m.set_shader_parameter("major_strength", 0.42)
-	m.set_shader_parameter("fine_strength", 0.08)
+	m.set_shader_parameter("minor_strength", 0.17)   # R8 polish: crisp fine cyan grid over dark obsidian glass
+	m.set_shader_parameter("major_strength", 0.32)
+	m.set_shader_parameter("fine_strength", 0.06)
 	return m
 
 ## Light strip with a pulse travelling along `axis` (see pulse.gdshader). HDR energy as Fx.emissive.
@@ -191,3 +191,9 @@ static func emissive(c: Color, energy: float) -> StandardMaterial3D:
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.albedo_color = Color(c.r * energy, c.g * energy, c.b * energy)
 	return m
+
+## R7-3 section view: one clip plane for every hologram part, set on the two
+## shared materials (R4-2) so the whole bench sections together. 1000 = off.
+static func set_section(y: float) -> void:
+	part_material().set_shader_parameter("clip_y", y)
+	mesh_part_material().set_shader_parameter("clip_y", y)

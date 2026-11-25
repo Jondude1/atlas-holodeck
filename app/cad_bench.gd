@@ -9,22 +9,43 @@ extends Node
 ## Voice alone never prints: send-to-print is the confirmation-gated, dry-run-only PrintFlow.
 
 signal spawned(model: Node3D)
-var _station: DataStation
+var _presence: Presence
+var _overview_lines: Array = []   # R6: composed for the wall widgets (was the station wall)
 var _lib_count := -1
 var _lib_recent: Array = []
 var _last_job_stamp := ""
 
 ## R3-11: the back-wall data station mirrors REAL bench state (library, table, last job).
-func bind_station(st: DataStation) -> void:
-	_station = st
+func bind_presence(p: Presence) -> void:
+	_presence = p
 	_refresh_station()
+
+## The current overview lines (title first) — the wall widgets render these (R6-2).
+func overview_lines() -> Array:
+	return _overview_lines
+
+## Wall-widget feeds (R6-2): the active model and the library, as display lines.
+func model_lines() -> Array:
+	if _active:
+		var nm: Variant = _active.get("model_name")
+		var lines: Array = ["ON THE TABLE", String(nm) if nm != null else "DEMO BRACKET", "SIZE — %s" % _active.dims_text()]
+		var pc: int = _active.part_names().size()
+		if pc > 0:
+			lines.append("PARTS — %d" % pc)
+		return lines
+	return ["ON THE TABLE", "— NOTHING YET —", "ASK ATLAS FOR A PART, OR LOAD ONE FROM THE LIBRARY"]
+
+func library_lines() -> Array:
+	var lines: Array = ["PARTS LIBRARY"]
+	lines.append("%s" % ("%d PARTS" % _lib_count if _lib_count >= 0 else "—"))
+	for e in _lib_recent:
+		lines.append("· %s" % String(e))
+	return lines
 
 static func dims_line(d: Array) -> String:
 	return Units.dims_line(d)
 
 func _refresh_station() -> void:
-	if _station == null:
-		return
 	var lines: Array = ["WORKSHOP OVERVIEW"]
 	lines.append("LIBRARY — %s" % ("%d PARTS" % _lib_count if _lib_count >= 0 else "—"))
 	for e in _lib_recent:
@@ -35,12 +56,12 @@ func _refresh_station() -> void:
 		lines.append("ON TABLE — —")
 	if _last_job_stamp != "":
 		lines.append("LAST JOB — %s" % _last_job_stamp)
-	_station.set_overview(lines)
+	_overview_lines = lines
 
 func _push_schematic_later(m: Node3D) -> void:
+	# R6: the station's schematic disc is gone (the table inset carries the schematic);
+	# kept as a no-op so the retarget call sites stay simple.
 	await get_tree().create_timer(1.4).timeout
-	if _station and is_instance_valid(m) and m == _active:
-		_station.set_schematic(m.schematic_texture())
 signal selected(model: Node3D)
 
 const CadModelScript := preload("res://cad_model.gd")
@@ -58,6 +79,7 @@ var _hud: Node
 var _voice: VoiceLink
 var _active: Node3D
 var _bench: Array[Node3D] = []
+var _spawning: Dictionary = {}   # R4-7: models mid-materialize — the trimmer must never free one from under its own spawn()
 var _handled := {}
 var _t_job := 0.0
 var _print: PrintFlow
@@ -74,6 +96,7 @@ func setup(table: Node3D, first_model: Node3D, panel: Node3D, hud: Node, voice: 
 	_active = first_model
 	_bench.append(first_model)
 	_watch(first_model)
+	restore_world()
 	voice.cad_job.connect(_on_job)
 	voice.cad_done.connect(_on_done)
 	voice.cad_failed.connect(_on_failed)
@@ -124,8 +147,9 @@ func _on_done(job_id: String) -> void:
 	var td := Time.get_time_dict_from_system()
 	_last_job_stamp = "%02d:%02d" % [int(td["hour"]), int(td["minute"])]
 	_refresh_station()
-	if _station:
-		_station.celebrate()
+	if _presence:
+		_presence.celebrate()
+		_presence.drift_visit(Vector3(-1.35, 0.02, -2.35), 7.0)   # R7-4: it comes to look at the new part
 
 ## Polls the job so completion is caught even if the socket dropped (or the hub is reached by LAN only for REST).
 func _poll(job_id: String) -> void:
@@ -204,9 +228,14 @@ func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job 
 		status = ""
 		_voice.say("The part came back, but I couldn't read it. Let's try that again.")
 		return null
+	if job_id != "":
+		_cache_job(job_id, glb, manifest)
 	m.call("hide_all")
+	_spawning[m] = true
 	if old:
-		return await _replace_in_place(old, m, manifest)
+		var replaced := await _replace_in_place(old, m, manifest)
+		_spawning.erase(m)
+		return replaced
 	_park_active()
 	_bench.append(m)
 	_watch(m)
@@ -222,6 +251,10 @@ func spawn(glb: PackedByteArray, manifest: Dictionary, job_id := "", parent_job 
 	m.labels_beat.connect(_on_labels_beat.bind(m), CONNECT_ONE_SHOT)
 	Sfx.play(self, "materialize")
 	await m.materialize()
+	_spawning.erase(m)
+	if not is_instance_valid(m):
+		status = ""   # R4-7: freed mid-arrival (delete/trim) — never touch it again
+		return null
 	_log("materialize complete")
 	for h in get_tree().get_nodes_in_group("holodeck_hands"):
 		if h.has_method("buzz"):
@@ -266,6 +299,9 @@ func _replace_in_place(old: Node3D, m: Node3D, manifest: Dictionary) -> Node3D:
 	_voice.say(line)
 	m.labels_beat.connect(_on_labels_beat.bind(m), CONNECT_ONE_SHOT)
 	await m.materialize()
+	if not is_instance_valid(m):
+		status = ""   # R4-7: freed mid-arrival — never touch it again
+		return null
 	if was_parked:
 		m.call("park", m.position, m.scale.x)
 	spawned.emit(m)
@@ -293,6 +329,8 @@ func select(m: Node3D) -> void:
 	if _active != null and _active != m and not _active.call("is_parked"):
 		_active.call("park", Vector3(vacated.x, _active.position.y, vacated.z))
 	_active = m
+	_clear_measure()
+	Fx.set_section(1000.0)
 	m.call("reset_pose", 0.7)
 	_retarget(m)
 	_log("bench select: %s now active" % m.name)
@@ -335,7 +373,7 @@ func _trim_bench() -> void:
 	while _bench.size() > MAX_ON_BENCH:
 		var victim: Node3D = null
 		for b in _bench:
-			if b != _active and b.call("is_parked") and b.get_script() == CadModelScript:
+			if b != _active and b.call("is_parked") and b.get_script() == CadModelScript and not _spawning.has(b):
 				victim = b
 				break
 		if victim == null:
@@ -377,3 +415,321 @@ func _get_bytes(path: String) -> PackedByteArray:
 	if res[0] != HTTPRequest.RESULT_SUCCESS or res[1] != 200:
 		return PackedByteArray()
 	return res[3]
+
+# ---------------------------------------------------------------- Round 5B: solidify + persistence
+## Carry the active model beyond the table's edge and it SOLIDIFIES: same geometry, a
+## machined-titanium material, living in the world as a grabbable object that settles onto
+## whatever support is under it and PERSISTS (user://world.json + the job's GLB cached at
+## spawn, so restore works with the hub offline). Carry it back over a free table and it
+## returns to hologram + bench duty. One world solid at a time (v1 scope).
+
+const WORLD_PATH := "user://world.json"
+const CACHE_DIR := "user://world_cache"
+var _solid: Node3D = null
+static var _solid_mat: StandardMaterial3D = null
+
+static func solid_material() -> StandardMaterial3D:
+	if _solid_mat == null:
+		_solid_mat = StandardMaterial3D.new()
+		_solid_mat.albedo_color = Color(0.6, 0.63, 0.67)
+		_solid_mat.metallic = 0.85
+		_solid_mat.roughness = 0.38
+	return _solid_mat
+
+func _process(dt: float) -> void:
+	if _solid == null and _active != null and is_instance_valid(_active) \
+			and _active.get_script() == CadModelScript and bool(_active.call("is_held")):
+		if _beyond_table(_active, 0.18):
+			_solidify(_active)
+	if _solid != null and is_instance_valid(_solid):
+		if bool(_solid.call("is_held")):
+			if _active == null and _within_table(_solid, -0.04) and _solid.global_position.y < 1.85:
+				_unsolidify(_solid)
+		else:
+			var sup := Prop.support_height(_solid.global_position)
+			if _solid.global_position.y > sup + 0.004:
+				_solid.global_position.y = lerpf(_solid.global_position.y, sup, clampf(dt * 7.0, 0.0, 1.0))
+				if _solid.global_position.y <= sup + 0.02:
+					_solid.global_position.y = sup
+					_save_world()
+
+func _table_rect(ext: float) -> Rect2:
+	var c := _table.global_position
+	return Rect2(c.x - 1.35 - ext, c.z - 0.72 - ext, 2.7 + ext * 2.0, 1.44 + ext * 2.0)
+
+func _centre_xz(m: Node3D) -> Vector2:
+	var c: Vector3 = m.global_transform * (m.get("center_local") as Vector3)
+	return Vector2(c.x, c.z)
+
+func _beyond_table(m: Node3D, ext: float) -> bool:
+	return not _table_rect(ext).has_point(_centre_xz(m))
+
+func _within_table(m: Node3D, ext: float) -> bool:
+	return _table_rect(ext).has_point(_centre_xz(m))
+
+func _solidify(m: Node3D) -> void:
+	m.call("set_explode", 0.0)
+	_bench.erase(m)
+	if _active == m:
+		_active = null
+	m.reparent(get_parent(), true)
+	for p in (m.get("_parts") as Array):
+		(p as MeshInstance3D).material_override = solid_material()
+	m.set("world_solid", true)
+	_solid = m
+	Sfx.play(self, "materialize")
+	_log("solidified '%s' — it lives in the world now" % String(m.get("model_name")))
+	_save_world()
+	_refresh_station()
+
+func _unsolidify(m: Node3D) -> void:
+	m.reparent(_table, true)
+	for p in (m.get("_parts") as Array):
+		(p as MeshInstance3D).material_override = m.call("_make_material", p)
+	m.set("world_solid", false)
+	_solid = null
+	_bench.append(m)
+	if not m.is_connected("flicked_aside", _on_flicked):
+		_watch(m)
+	_active = m
+	_retarget(m)
+	Sfx.play(self, "materialize")
+	_log("'%s' is back on the table as a hologram" % String(m.get("model_name")))
+	_save_world()
+	_refresh_station()
+
+func _cache_job(job_id: String, glb: PackedByteArray, manifest: Dictionary) -> void:
+	DirAccess.make_dir_recursive_absolute(CACHE_DIR)
+	var f := FileAccess.open(CACHE_DIR + "/" + job_id + ".glb", FileAccess.WRITE)
+	if f:
+		f.store_buffer(glb)
+	var g := FileAccess.open(CACHE_DIR + "/" + job_id + ".json", FileAccess.WRITE)
+	if g:
+		g.store_string(JSON.stringify(manifest))
+
+func _save_world() -> void:
+	var objs: Array = []
+	if _solid != null and is_instance_valid(_solid):
+		var p := _solid.global_position
+		var r := _solid.global_rotation
+		objs.append({"job_id": String(_solid.get("job_id")), "name": String(_solid.get("model_name")),
+			"pos": [p.x, p.y, p.z], "rot": [r.x, r.y, r.z], "scale": _solid.scale.x})
+	var f := FileAccess.open(WORLD_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"version": 1, "objects": objs}))
+
+func restore_world() -> void:
+	if not FileAccess.file_exists(WORLD_PATH):
+		return
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(WORLD_PATH))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	for entry in (parsed as Dictionary).get("objects", []):
+		var jid := String((entry as Dictionary).get("job_id", ""))
+		var glb_path := CACHE_DIR + "/" + jid + ".glb"
+		var man_path := CACHE_DIR + "/" + jid + ".json"
+		if jid == "" or not FileAccess.file_exists(glb_path) or not FileAccess.file_exists(man_path):
+			continue
+		var man: Variant = JSON.parse_string(FileAccess.get_file_as_string(man_path))
+		if typeof(man) != TYPE_DICTIONARY:
+			continue
+		var m: Node3D = Node3D.new()
+		m.set_script(CadModelScript)
+		m.name = "WorldModel"
+		m.call("setup", FileAccess.get_file_as_bytes(glb_path), man)
+		m.set("job_id", jid)
+		get_parent().add_child(m)
+		if not bool(m.get("load_ok")):
+			m.queue_free()
+			continue
+		var pos: Array = (entry as Dictionary).get("pos", [0, 0, 0])
+		var rot: Array = (entry as Dictionary).get("rot", [0, 0, 0])
+		m.global_position = Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
+		m.global_rotation = Vector3(float(rot[0]), float(rot[1]), float(rot[2]))
+		m.scale = Vector3.ONE * float((entry as Dictionary).get("scale", 1.0))
+		for p in (m.get("_parts") as Array):
+			(p as MeshInstance3D).material_override = solid_material()
+		m.set("world_solid", true)
+		_solid = m
+		_log("restored world object '%s' from the headset cache" % String(m.get("model_name")))
+
+# ------------------------------------------------------------------ R7-3 bench tools
+
+var _measure_armed := false
+var _pins: Array[Vector3] = []
+var _pin_nodes: Array = []          # [pinA, pinB, tape, label], built on first use
+var _board: RefBoard = null
+
+func measure_armed() -> bool:
+	return _measure_armed
+
+func set_measure(armed: bool) -> void:
+	_measure_armed = armed
+	_pins.clear()
+	_measure_refresh()
+
+func _clear_measure() -> void:
+	_pins.clear()
+	_measure_refresh()
+
+## Drop a tape pin where the ray strikes the active model's parts (nearest AABB
+## face — the tape measures overall extents point-to-point). Third click restarts.
+func measure_pick(origin: Vector3, dir: Vector3) -> bool:
+	if not _measure_armed or _active == null:
+		return false
+	var best_t := INF
+	var best_p := Vector3.ZERO
+	for p in _active.get("_parts"):
+		var mi := p as MeshInstance3D
+		if mi == null:
+			continue
+		var aabb := mi.global_transform * mi.get_aabb()
+		var t := _ray_aabb(origin, dir, aabb)
+		if t >= 0.0 and t < best_t:
+			best_t = t
+			best_p = origin + dir * t
+	if best_t == INF:
+		return false
+	if _pins.size() >= 2:
+		_pins.clear()
+	_pins.append(best_p)
+	_measure_refresh()
+	Sfx.play(self, "tick")
+	return true
+
+func measure_text() -> String:
+	if _pins.size() < 2:
+		return ""
+	var inches := _pins[0].distance_to(_pins[1]) * 39.3700787
+	var t := Units.len_in(inches, inches >= 24.0)
+	return t if inches >= 24.0 else t + " IN"   # house convention (Units.dims_line): the unit rides the line
+
+static func _ray_aabb(o: Vector3, d: Vector3, b: AABB) -> float:
+	var tmin := 0.0
+	var tmax := INF
+	for ax in 3:
+		var lo: float = b.position[ax]
+		var hi: float = lo + b.size[ax]
+		if absf(d[ax]) < 0.000001:
+			if o[ax] < lo or o[ax] > hi:
+				return -1.0
+		else:
+			var inv := 1.0 / d[ax]
+			var t1 := (lo - o[ax]) * inv
+			var t2 := (hi - o[ax]) * inv
+			if t1 > t2:
+				var tmp: float = t1
+				t1 = t2
+				t2 = tmp
+			tmin = maxf(tmin, t1)
+			tmax = minf(tmax, t2)
+			if tmin > tmax:
+				return -1.0
+	return tmin
+
+func _measure_refresh() -> void:
+	if _pin_nodes.is_empty():
+		if _pins.is_empty():
+			return
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(0.85, 0.97, 1.0)
+		var sm := SphereMesh.new()
+		sm.radius = 0.013
+		sm.height = 0.026
+		sm.radial_segments = 10
+		sm.rings = 5
+		var pa := MeshInstance3D.new()
+		pa.name = "TapePinA"
+		pa.mesh = sm
+		pa.material_override = mat
+		var pb := MeshInstance3D.new()
+		pb.name = "TapePinB"
+		pb.mesh = sm
+		pb.material_override = mat
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.005, 0.005, 1.0)
+		var tape := MeshInstance3D.new()
+		tape.name = "TapeLine"
+		tape.mesh = bm
+		tape.material_override = mat
+		var lab := Label3D.new()
+		lab.name = "TapeLabel"
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.pixel_size = 0.0021
+		lab.font = load(Tokens.FONT_BOLD)
+		lab.font_size = 64
+		lab.modulate = Color(0.85, 0.97, 1.0)
+		lab.outline_size = 8
+		lab.outline_modulate = Color(0.02, 0.05, 0.09)
+		for n in [pa, pb, tape, lab]:
+			n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			get_parent().add_child(n)
+		_pin_nodes = [pa, pb, tape, lab]
+	var pa: MeshInstance3D = _pin_nodes[0]
+	var pb: MeshInstance3D = _pin_nodes[1]
+	var tape: MeshInstance3D = _pin_nodes[2]
+	var lab: Label3D = _pin_nodes[3]
+	pa.visible = _pins.size() >= 1
+	pb.visible = _pins.size() >= 2
+	tape.visible = _pins.size() >= 2
+	lab.visible = _pins.size() >= 2
+	if _pins.size() >= 1:
+		pa.global_position = _pins[0]
+	if _pins.size() >= 2:
+		pb.global_position = _pins[1]
+		var a: Vector3 = _pins[0]
+		var b: Vector3 = _pins[1]
+		var mid := (a + b) * 0.5
+		var dirv := b - a
+		tape.global_position = mid
+		tape.scale = Vector3(1, 1, dirv.length())
+		if dirv.length() > 0.001:
+			var up := Vector3.UP
+			if absf(dirv.normalized().dot(Vector3.UP)) > 0.95:
+				up = Vector3.RIGHT
+			tape.global_transform = Transform3D(Basis.looking_at(dirv.normalized(), up), mid)
+			tape.scale = Vector3(1, 1, dirv.length())
+		lab.global_position = mid + Vector3(0, 0.055, 0)
+		lab.text = measure_text()
+
+## Section view: v in 0..1 sweeps a clip plane down through the active model.
+func set_section(v: float) -> void:
+	if v <= 0.001 or _active == null:
+		Fx.set_section(1000.0)
+		return
+	var box := AABB()
+	var first := true
+	for p in _active.get("_parts"):
+		var mi := p as MeshInstance3D
+		if mi == null:
+			continue
+		var aabb := mi.global_transform * mi.get_aabb()
+		if first:
+			box = aabb
+			first = false
+		else:
+			box = box.merge(aabb)
+	if first:
+		return
+	Fx.set_section(lerpf(box.position.y + box.size.y, box.position.y + box.size.y * 0.03, v))
+
+## Reference board: a picture off the wall, standing on the table (toggle).
+func toggle_board() -> bool:
+	if _board:
+		_board.queue_free()
+		_board = null
+		return false
+	var texs: Array = []
+	for p in WallWidgets.PICTURE_PATHS:
+		if ResourceLoader.exists(p):
+			texs.append(load(p))
+	if texs.is_empty():
+		return false
+	_board = RefBoard.new()
+	_board.name = "RefBoard"
+	get_parent().add_child(_board)
+	_board.build(texs)
+	_board.global_position = _table.global_position + Vector3(0.92, HoloTable.TOP_Y, 0.06)
+	_board.rotation.y = -0.32
+	return true

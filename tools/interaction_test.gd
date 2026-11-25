@@ -57,10 +57,13 @@ func _release(m: Node3D) -> void:
 func _run() -> void:
 	await frames(3)
 	table = main.get_node("HoloTable")
-	bracket = main.get_node("HoloTable/TestBracket")
 	panel = main.get_node("UIPanel")
 	voice = main.get_node("Voice")
 	bench = main.get_node("CadBench")
+	# The boot demo model, whatever it is: the Star Destroyer demo swap replaced
+	# TestBracket as the bench's first model, so never hardcode that node — take
+	# the bench's actual active model (same approach as tools_test.gd).
+	bracket = bench.active_model()
 	hand = Node3D.new()
 	root.add_child(hand)
 	bracket.call("hide_all")   # nothing here needs the boot / materialize beats
@@ -247,7 +250,8 @@ func _run() -> void:
 	ck("R1-7 select pulls the parked bracket to centre and makes it active", bench.active_model() == bracket and not bracket.call("is_parked")
 			and _tl(bracket).distance_to(Vector3(0, top, 0)) < 0.01 and absf(bracket.scale.x - 1.0) < 0.01, "pos=%s" % _tl(bracket))
 	ck("R1-7 the model that was on stage parks into the vacated slot", treb.call("is_parked") and _tl(treb).distance_to(bpos) < 0.05, "treb=%s slot=%s" % [_tl(treb), bpos])
-	ck("R1-7 panel retargets (3 part rows) and readouts follow", _count_named(vp, "Part") == 3, "rows=%d" % _count_named(vp, "Part"))
+	var want_rows: int = bracket.call("part_names").size()
+	ck("R1-7 panel retargets (%d part rows) and readouts follow" % want_rows, _count_named(vp, "Part") == want_rows, "rows=%d" % _count_named(vp, "Part"))
 	var tw: Node = panel.get("_model")
 	ck("R1-7 panel model is the bracket", tw == bracket)
 	bench.select(treb)

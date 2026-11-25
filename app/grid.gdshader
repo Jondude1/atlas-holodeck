@@ -21,7 +21,9 @@ uniform float near_dist = 2.5;   // full strength at or inside this distance (m)
 uniform float far_dist = 9.0;    // far_floor strength at or beyond this distance (m)
 uniform float far_floor = 0.15;
 uniform float hot_center = 0.0;   // R3-2: extra emission toward the mesh centre (table inset: the work pools light)
-uniform float hot_radius = 0.8;   // metres from centre where the hot falloff reaches zero
+uniform float hot_radius = 0.8;
+uniform vec2 hot_point = vec2(0.0);  // R7-4: where a tap landed (inset-local XZ)
+uniform float hot_pulse = 0.0;       // R7-4: tap flash strength, decays to 0   // metres from centre where the hot falloff reaches zero
 
 varying vec3 lpos;
 varying vec3 lnrm;
@@ -49,5 +51,6 @@ void fragment() {
 	ALBEDO = base_color * fade;
 	float k = mix(1.0, mix(1.0, far_floor, smoothstep(near_dist, far_dist, distance(wpos, CAMERA_POSITION_WORLD))), dist_fade);
 	float hot = 1.0 + hot_center * (1.0 - smoothstep(0.0, hot_radius, length(lpos.xz)));
+	hot += hot_pulse * (1.0 - smoothstep(0.0, 0.45, length(lpos.xz - hot_point)));
 	EMISSION = e * glow * fade * strength * k * hot;
 }

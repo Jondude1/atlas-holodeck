@@ -131,9 +131,16 @@ func _run() -> void:
 	cam.fov = 58.0
 	cam.global_position = Vector3(0.0, 1.9, -0.55)
 	cam.look_at(table.global_position + Vector3(0, 1.1, 0))
-	await create_timer(0.6).timeout
+	# dismiss() pokes the UIPanel SubViewport into UPDATE_ALWAYS for 3 s
+	# (ui_panel poke(3.0)); the PERF ceiling was written for the resting state,
+	# so wait out the poke window (>= 3.5 s after the dismiss) before sampling.
+	await create_timer(3.6).timeout
 	await _snap("r1b-edit-in-place.png")
-	print("EX PERF draw_calls=%d lights=%d" % [await _draws(), _count(root, "Light3D")])
+	var perf_draws: int = await _draws()
+	var perf_lights: int = _count(root, "Light3D")
+	print("EX PERF draw_calls=%d lights=%d" % [perf_draws, perf_lights])
+	check(perf_draws <= 95, "R4-7 ceiling: draw calls %d <= 95 (Quest 2 mono budget)" % perf_draws)
+	check(perf_lights <= 3, "R4-7 ceiling: lights %d <= 3" % perf_lights)
 	print("ROUND1B_EXERCISE ", "PASS" if fails == 0 else "FAIL (%d)" % fails)
 	quit(0 if fails == 0 else 1)
 
