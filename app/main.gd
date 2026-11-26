@@ -16,6 +16,7 @@ const RING_DISTANCE := 1.3
 var _voice: VoiceLink
 var _bench: CadBench
 var _vista: VistaDeck
+var _tv: TvPanel
 var _chrome := true
 
 ## The floating panel + HUD dials: hidden by default so the room stays a clean space.
@@ -80,6 +81,12 @@ func _ready() -> void:
 	widgets.name = "WallWidgets"
 	add_child(widgets)
 	widgets.build(_bench)
+	# R7-1: resizable, placeable Jellyfin TV wall panel (default FRONT wall, behind spawn)
+	_tv = TvPanel.new()
+	_tv.name = "TvPanel"
+	add_child(_tv)
+	_tv.build()
+	_panel.bind_tv(_tv)
 	# Round 5: the world outside the open wall — resident vistas, mood bound to the
 	# Environment + the table's light rig; the panel's VIEW button cycles them.
 	_vista = VistaDeck.new()
@@ -248,6 +255,8 @@ func _boot() -> void:
 func _on_boot_complete() -> void:
 	print("boot complete")
 	_check_hub()
+	if _tv and _tv.visible:
+		_tv.fetch_libraries_if_idle()
 	_table.start_motes()
 	_room.start_dust()
 	_panel.reveal()

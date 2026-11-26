@@ -14,6 +14,8 @@ var _hover_model: Node = null
 var _menu_down_ms := -1
 const RESET_HOLD_MS := 800
 var _last := Vector2.ZERO
+var _pointer_target: Node = null
+var _press_target: Node = null
 @onready var _laser: Node3D = get_node_or_null("Laser")
 
 func _ready() -> void:
@@ -64,6 +66,7 @@ func _on_pressed(action: String) -> void:
 			buzz(0.04, 0.45)  # R2-1: select confirmed in the hand
 		elif hit != null:
 			_pressing = true
+			_press_target = _pointer_target
 			_send_button(Vector2(hit.x, hit.y), true)
 			buzz(0.015, 0.25)  # R2-1: panel poke tick
 		elif _measure_click():
@@ -107,6 +110,7 @@ func _on_released(action: String) -> void:
 	elif action == "trigger_click" and _pressing:
 		_pressing = false
 		_send_button(_last, false)
+		_press_target = null
 	elif action == "trigger_click" and _ptt_held and not _ptt_by_ax:
 		_ptt_held = false
 		var v := get_tree().get_first_node_in_group("voice") as VoiceLink
@@ -126,8 +130,18 @@ func _nearest_grabbable() -> Node:
 	return best
 
 func _hit() -> Variant:
-	var panel := get_tree().get_first_node_in_group("ui_panel")
-	return panel.pick(global_position, -global_basis.z) if panel else null
+	_pointer_target = null
+	var best_hit: Variant = null
+	var best_dist := INF
+	for grp in ["ui_panel", "tv_panel"]:
+		var panel: Node = get_tree().get_first_node_in_group(grp)
+		if panel and panel.has_method("pick"):
+			var h: Variant = panel.pick(global_position, -global_basis.z)
+			if h != null and float(h.z) < best_dist:
+				best_dist = float(h.z)
+				best_hit = h
+				_pointer_target = panel
+	return best_hit
 
 var _panel_ray := false
 
@@ -166,7 +180,8 @@ func _process(_delta: float) -> void:
 		ev.global_position = pos
 		ev.relative = pos - _last
 		ev.button_mask = MOUSE_BUTTON_MASK_LEFT if _pressing else 0
-		get_tree().get_first_node_in_group("ui_panel").push(ev)
+		if _pointer_target and is_instance_valid(_pointer_target):
+			_pointer_target.push(ev)
 		_last = pos
 		_stick_scroll(pos, _delta)
 	if _laser:
@@ -180,7 +195,11 @@ func _send_button(pos: Vector2, down: bool) -> void:
 	ev.position = pos
 	ev.global_position = pos
 	ev.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
-	get_tree().get_first_node_in_group("ui_panel").push(ev)
+	var target: Node = _press_target if (_press_target and is_instance_valid(_press_target)) else _pointer_target
+	if target == null:
+		target = get_tree().get_first_node_in_group("ui_panel")
+	if target:
+		target.push(ev)
 
 ## Pointer hover (R1-11): the part under the ray gets its name raised (and its rim lit); a parked model under the ray
 ## is the bench-select target. Skipped while the ray is on the panel.
@@ -226,4 +245,6 @@ func _stick_scroll(pos: Vector2, dt: float) -> void:
 	ev.pressed = true
 	ev.position = pos
 	ev.global_position = pos
-	get_tree().get_first_node_in_group("ui_panel").push(ev)
+	var target: Node = _pointer_target if (_pointer_target and is_instance_valid(_pointer_target)) else get_tree().get_first_node_in_group("ui_panel")
+	if target:
+		target.push(ev)
