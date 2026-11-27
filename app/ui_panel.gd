@@ -142,6 +142,15 @@ func _build_ui() -> void:
 			board_btn.set_pressed_no_signal(now)
 		poke())
 	tools.add_child(board_btn)
+	_tv_button = _action_button("TV", Vector2(72, 40), 22)
+	_tv_button.toggle_mode = true
+	_tv_button.toggled.connect(func(_on: bool) -> void:
+		var tv: Node = _tv if (_tv != null and is_instance_valid(_tv)) else get_tree().get_first_node_in_group("tv_panel")
+		if tv and tv.has_method("toggle_tv"):
+			var now: bool = tv.toggle_tv()
+			_tv_button.set_pressed_no_signal(now)
+		poke())
+	tools.add_child(_tv_button)
 	box.add_child(tools)
 	slider.value_changed.connect(_on_slider)
 	box.add_child(slider)
@@ -570,6 +579,14 @@ func _build_print_card() -> void:
 var _vista: VistaDeck
 var _vista_button: Button
 var _grade_button: Button
+var _tv: Node
+var _tv_button: Button
+
+func bind_tv(tv: Node) -> void:
+	_tv = tv
+	if _tv_button and _tv:
+		_tv_button.set_pressed_no_signal(_tv.visible)
+		poke()
 
 func bind_vista(v: VistaDeck) -> void:
 	_vista = v

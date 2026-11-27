@@ -1,4 +1,22 @@
-# WIP-STATE — Atlas Holodeck (updated 2026-11-25 13:20 ET)
+# WIP-STATE — Atlas Holodeck (updated 2026-11-25 13:44 ET)
+
+## ITERATE ROUND 7 — P6 BUDGET RE-CHECK / STAND-DOWN: DONE 2026-11-25 (Helios)
+- No STOP file, no live lock, no foreign app/ changes at start.
+- Priority scan unchanged from round 6: P1–P5 all DONE; TV panel is
+  Jon-gated (Jellyfin details), heroine suit parked until the
+  2026-11-26 TRELLIS quota reset. No unfinished, ungated item exists.
+- P6 probe: import 0 SCRIPT ERRORs. First SUITPERF sample read
+  118 calls / 148,088 prims mid-materialize (transient frame state);
+  a sequential re-run read exactly round 6's baseline — 87 draw
+  calls / 145,398 primitives / exactly 3 light nodes — within law
+  (≤90 calls, exactly 3 lights). No budget problem, no P6 build.
+- No code changed this round. Resting capture shot-r5-room remains
+  the current North Star comparison.
+- PUSH: no push attempted — rounds 1–5 commits are still local-only
+  pending the known push_api.py incremental-tree fix.
+- NEXT: stand down until Jon opens a new item, supplies Jellyfin
+  details for the TV panel, or the 2026-11-26 TRELLIS reset allows
+  the clean heroine-suit extract.
 
 ## ITERATE ROUND 6 — P6 BUDGET RE-CHECK / STAND-DOWN: DONE 2026-11-25 (Helios)
 - No STOP file, no live lock, no foreign app/ changes at start.
