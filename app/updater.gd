@@ -51,7 +51,7 @@ func _ready() -> void:
 	add_child(_dl)
 	_log("installed v%s (code %d)%s" % [installed_version(), installed_code(), "" if auto_enabled() else " - auto-check off (local/dev build)"])
 
-## The version CI stamped into project.godot ("2.<n>"); local builds say "2.1-dev".
+## The version CI stamped into project.godot ("2.<n>"); local builds say "2.2-dev".
 func installed_version() -> String:
 	return str(ProjectSettings.get_setting("application/config/version", "0"))
 

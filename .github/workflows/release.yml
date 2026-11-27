@@ -1,7 +1,7 @@
 name: Build & release APK
 
 # Every push to main builds a signed Quest APK and publishes it as a GitHub Release.
-# Versions continue from Jon's hand builds: v2.2, v2.3, ... The in-headset updater (app/updater.gd) reads
+# Versions continue from Jon's hand builds (up to v2.2): v2.3, v2.4, ... The in-headset updater (app/updater.gd) reads
 # releases/latest and installs it.
 # Pull requests and manual runs build and verify the APK (downloadable as a run artifact) but publish nothing.
 on:
@@ -76,12 +76,15 @@ jobs:
           fi
           ~/godot/godot --version
 
-      - name: Stamp version (2.<n>, one past the latest release; Jon's hand builds went up to v2.1)
+      - name: Stamp version (2.<n>, one past the latest release and past Jon's hand builds)
         env:
           GH_TOKEN: ${{ github.token }}
+          HAND_BUILDS_UP_TO: "2"
         run: |
           LAST="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
-          case "$LAST" in v2.*) PREV="${LAST##*.}" ;; *) PREV=1 ;; esac
+          case "$LAST" in v2.*) PREV="${LAST##*.}" ;; *) PREV=0 ;; esac
+          # Never reuse a number a hand-uploaded build already has (Drive builds reached v2.2 on Nov 26).
+          if [ "$PREV" -lt "$HAND_BUILDS_UP_TO" ]; then PREV="$HAND_BUILDS_UP_TO"; fi
           N=$((PREV + 1))
           VER="2.${N}"
           # versionCode = N too: the updater compares the trailing number of the tag with the installed version.
