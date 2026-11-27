@@ -83,12 +83,17 @@ func _build_ui() -> void:
 	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
 
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 12)
+	box.add_child(title_row)
 	var title := Label.new()
 	title.text = "ATLAS HOLODECK"
 	title.add_theme_font_override("font", load(Tokens.FONT_BOLD))
 	title.add_theme_font_size_override("font_size", 40)
 	title.add_theme_color_override("font_color", Tokens.HOLO_CORE)
-	box.add_child(title)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title)
+	title_row.add_child(_build_update_button())
 
 	var slider := HSlider.new()
 	slider.min_value = 0.0
@@ -216,6 +221,46 @@ func _build_ui() -> void:
 	box.add_child(send)
 	_build_print_card()
 	_build_lib_card()
+
+# ---------------------------------------------------------------- Self-update (GitHub Releases)
+## One compact button beside the title: shows the installed version, and becomes UPDATE / INSTALL when the
+## Updater autoload finds a newer GitHub Release. Pressing it always does the next step (check, download, install).
+var _update_button: Button
+
+func _build_update_button() -> Button:
+	_update_button = _action_button("", Vector2(0, 52), 22)
+	_update_button.name = "UpdateButton"
+	_update_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_update_button.add_theme_stylebox_override("disabled", _flat(Tokens.a(Tokens.HOLO_DEEP, Tokens.PANEL_ALPHA), Tokens.GRID_MINOR, 1))
+	_update_button.add_theme_color_override("font_disabled_color", Tokens.HOLO_LINE)
+	_update_button.pressed.connect(Updater.press)
+	Updater.state_changed.connect(func(_s: int) -> void: _refresh_update_button())
+	Updater.progress_changed.connect(func(_f: float) -> void: _refresh_update_button())
+	_refresh_update_button()
+	return _update_button
+
+func _refresh_update_button() -> void:
+	var cur := "v" + Updater.installed_version()
+	var t := cur
+	match Updater.state:
+		Updater.S.CHECKING:
+			t = "CHECKING..."
+		Updater.S.UP_TO_DATE:
+			t = cur + "  LATEST"
+		Updater.S.AVAILABLE:
+			t = "UPDATE TO v" + Updater.latest_version
+		Updater.S.DOWNLOADING:
+			t = "DOWNLOADING %d%%" % roundi(Updater.progress * 100.0)
+		Updater.S.READY:
+			t = "INSTALL v" + Updater.latest_version
+		Updater.S.NEEDS_PERMISSION, Updater.S.FAILED:
+			t = Updater.reason
+	_update_button.disabled = Updater.state == Updater.S.CHECKING or Updater.state == Updater.S.DOWNLOADING
+	var attention: bool = Updater.state in [Updater.S.AVAILABLE, Updater.S.READY, Updater.S.NEEDS_PERMISSION]
+	_update_button.add_theme_color_override("font_color", Tokens.HOLO_CORE if attention else Tokens.HOLO_LINE)
+	if t != _update_button.text:
+		_update_button.text = t
+		poke(4.0 if attention else 1.0)
 
 ## Shared styling for the plain action buttons (tick on hover, light pulse + confirm on press).
 func _action_button(text: String, min_size: Vector2, font_size: int) -> Button:

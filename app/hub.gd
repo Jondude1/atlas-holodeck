@@ -3,7 +3,8 @@ class_name Hub
 ## set by main.gd's hub check; voice.gd / cad_bench.gd build their requests from it.
 
 const CANDIDATES := ["http://192.168.4.51:8765", "http://100.65.202.81:8765"]
-const SECRET_PATH := "res://hub_secret.cfg"   # gitignored; baked into the APK at export time (see builds/README.md)
+const SECRET_FILE := "hub_secret.cfg"
+const SECRET_PATH := "res://hub_secret.cfg"   # gitignored; baked into LOCAL exports only (see builds/README.md)
 
 static var base_url := ""
 
@@ -22,15 +23,30 @@ static func candidates() -> Array:
 	var o := OS.get_environment("HOLODECK_HUB")
 	return [o] if o != "" else CANDIDATES
 
-## Bearer token for the token-gated hub routes (the same token the phone app is given). Read once from the
-## gitignored hub_secret.cfg; "" if the file isn't in the build (then gated routes answer 401 and voice stays off).
+## Bearer token for the token-gated hub routes (the same token the phone app is given). Read once; "" if no
+## token is found (then gated routes answer 401 and voice stays off).
+## GitHub Release builds carry NO token (the repo and its releases are public), so on the headset the token is
+## put in place once: copy hub_secret.cfg into Android/data/com.jondude.holodeck/files/Documents/ (SideQuest's
+## file browser, or `adb push`). That folder survives app updates; an uninstall clears it. Local builds can still
+## bake the gitignored app/hub_secret.cfg in via the export preset's include_filter (checked last).
 static func token() -> String:
 	if not _token_loaded:
 		_token_loaded = true
-		var cfg := ConfigFile.new()
-		if cfg.load(SECRET_PATH) == OK:
-			_token = String(cfg.get_value("hub", "token", "")).strip_edges()
+		for path in secret_paths():
+			var cfg := ConfigFile.new()
+			if cfg.load(path) == OK:
+				_token = String(cfg.get_value("hub", "token", "")).strip_edges()
+				if _token != "":
+					break
 	return _token
+
+## Where the token is looked for, in order: the on-headset file, then the baked-in one.
+static func secret_paths() -> Array:
+	var paths := []
+	if OS.has_feature("android"):
+		paths.append(OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS, false).path_join(SECRET_FILE))
+	paths.append(SECRET_PATH)
+	return paths
 
 static func auth_headers(extra: PackedStringArray = PackedStringArray()) -> PackedStringArray:
 	var h := extra.duplicate()
